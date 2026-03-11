@@ -90,12 +90,12 @@ export async function scrapeDHA(bot: BotService) {
                     try {
                         const targetCat = mapping.target_category;
                         let success = false;
-                        if (item.detectedType === 'video') {
+                        if (targetCat === 'videoGallery' || item.detectedType === 'video') {
                             const video = await scrapeDHAVideo(item.original_url, targetCat);
                             if (video) {
                                 success = await bot.saveVideo(video);
                             }
-                        } else if (item.detectedType === 'galeri') {
+                        } else if (targetCat === 'photoGallery' || item.detectedType === 'galeri') {
                             const gallery = await scrapeDHAGallery(item.original_url, targetCat);
                             if (gallery) {
                                 success = await bot.saveGallery(gallery);

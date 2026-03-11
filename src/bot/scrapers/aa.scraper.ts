@@ -129,12 +129,12 @@ async function scrapeAAHTML(url: string, targetCategory: string, bot: BotService
                 const isVideo = articleUrl.includes('/video-galerisi/') || /\/(vgc|video)\//.test(articleUrl);
 
                 let success = false;
-                if (isVideo) {
+                if (targetCategory === 'videoGallery' || isVideo) {
                     const video = await scrapeAAVideo(articleUrl, targetCategory);
                     if (video && !bot.isGenericTitle(video.title)) {
                         success = await bot.saveVideo(video);
                     }
-                } else if (isGallery) {
+                } else if (targetCategory === 'photoGallery' || isGallery) {
                     const gallery = await scrapeAAGallery(articleUrl, targetCategory);
                     if (gallery && !bot.isGenericTitle(gallery.title)) {
                         success = await bot.saveGallery(gallery);

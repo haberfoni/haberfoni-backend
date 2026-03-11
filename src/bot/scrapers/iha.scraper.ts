@@ -137,12 +137,12 @@ async function scrapeIHAHTML(url: string, targetCategory: string, bot: BotServic
                 const isGalleryLink = articleUrl.includes('/foto-galeri-');
 
                 let success = false;
-                if (isVideoLink || (targetCategory === 'video' && articleUrl.includes('/haber-'))) {
+                if (targetCategory === 'videoGallery' || isVideoLink) {
                     const video = await scrapeIHAVideo(articleUrl, targetCategory);
                     if (video) {
                         success = await bot.saveVideo(video);
                     }
-                } else if (isGalleryLink || (targetCategory === 'galeri' && articleUrl.includes('/haber-'))) {
+                } else if (targetCategory === 'photoGallery' || isGalleryLink) {
                     const gallery = await scrapeIHAGallery(articleUrl, targetCategory);
                     if (gallery) {
                         success = await bot.saveGallery(gallery);
