@@ -192,17 +192,25 @@ async function scrapeAAVideo(url: string, targetCategory: string) {
 
         // AA specific video source structure
         let videoUrl = $('video source').attr('src') || $('video').attr('src') ||
-            $('meta[property="og:video:url"]').attr('content') ||
             $('meta[property="og:video:secure_url"]').attr('content') ||
-            $('meta[property="og:video"]').attr('content') ||
             $('meta[name="twitter:player"]').attr('content') ||
             $('iframe[src*="aa.com.tr/video"]').attr('src') ||
             $('iframe[src*="youtube"]').attr('src') || '';
 
+        const ogVideo = $('meta[property="og:video"]').attr('content') || $('meta[property="og:video:url"]').attr('content');
+        if (!videoUrl && ogVideo && (ogVideo.includes('.mp4') || ogVideo.includes('embed') || ogVideo.includes('/video'))) {
+            videoUrl = ogVideo;
+        }
+
         // Fallback title if h1 is empty
         const finalTitle = title || $('meta[property="og:title"]').attr('content') || $('title').text().trim();
 
-        if (!videoUrl || !finalTitle) return null;
+        if (!videoUrl || videoUrl === url || finalTitle.length < 5) return null;
+
+        // Ensure it looks somewhat like a media or embed URL
+        if (!videoUrl.includes('.mp4') && !videoUrl.includes('.m3u8') && !videoUrl.includes('youtube') && !videoUrl.includes('embed') && !videoUrl.includes('/video')) {
+            return null;
+        }
 
         return {
             title: finalTitle,

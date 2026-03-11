@@ -214,16 +214,25 @@ async function scrapeDHAVideo(url: string, targetCategory: string) {
         }
 
         if (!videoUrl) {
-            videoUrl = $('meta[property="og:video:url"]').attr('content') ||
+            videoUrl = $('iframe[src*="dha.com.tr/video"]').attr('src') ||
+                $('iframe[src*="youtube"]').attr('src') ||
                 $('meta[property="og:video:secure_url"]').attr('content') ||
-                $('meta[property="og:video"]').attr('content') ||
-                $('meta[name="twitter:player"]').attr('content') ||
-                $('iframe[src*="dha.com.tr/video"]').attr('src') ||
-                $('iframe[src*="youtube"]').attr('src') || '';
+                $('meta[name="twitter:player"]').attr('content') || '';
+
+            const ogVideo = $('meta[property="og:video"]').attr('content') || $('meta[property="og:video:url"]').attr('content');
+            if (!videoUrl && ogVideo && (ogVideo.includes('.mp4') || ogVideo.includes('embed') || ogVideo.includes('/video'))) {
+                videoUrl = ogVideo;
+            }
         }
 
         const finalTitle = title || $('meta[property="og:title"]').attr('content') || $('title').text().trim();
-        if (!videoUrl || !finalTitle) return null;
+        
+        if (!videoUrl || videoUrl === url || finalTitle.length < 5) return null;
+
+        // Ensure it looks somewhat like a media or embed URL
+        if (!videoUrl.includes('.mp4') && !videoUrl.includes('.m3u8') && !videoUrl.includes('youtube') && !videoUrl.includes('embed') && !videoUrl.includes('/video')) {
+            return null;
+        }
         if (author) {
             author = author.replace(/[\/-]$/, '').replace(/,\s*\(DHA\)-?\s*$/, '').trim();
         }

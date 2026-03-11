@@ -190,12 +190,16 @@ async function scrapeIHAVideo(url: string, targetCategory: string) {
         const thumbnail = $('meta[property="og:image"]').attr('content') || '';
 
         let videoUrl = $('video source').attr('src') || $('video').attr('src') ||
-            $('meta[property="og:video:url"]').attr('content') ||
             $('meta[property="og:video:secure_url"]').attr('content') ||
-            $('meta[property="og:video"]').attr('content') ||
             $('meta[name="twitter:player"]').attr('content') ||
             $('iframe[src*="iha.com.tr/video"]').attr('src') ||
             $('iframe[src*="youtube"]').attr('src') || '';
+
+        // If it's just a generic og:video tag that doesn't point to a real video file/player string, ignore it.
+        const ogVideo = $('meta[property="og:video"]').attr('content');
+        if (!videoUrl && ogVideo && (ogVideo.includes('.mp4') || ogVideo.includes('embed') || ogVideo.includes('/video'))) {
+            videoUrl = ogVideo;
+        }
 
         if (!videoUrl) {
             const html = response.data;
@@ -213,7 +217,13 @@ async function scrapeIHAVideo(url: string, targetCategory: string) {
         // Fallback title if h1 is empty
         const finalTitle = title || $('meta[property="og:title"]').attr('content') || $('title').text().trim();
 
-        if (!videoUrl || !finalTitle) return null;
+        // STRICT VIDEO CHECK: If no valid video URL was found, or if the URL is just the article URL itself, it's not a video!
+        if (!videoUrl || videoUrl === url || finalTitle.length < 5) return null;
+
+        // Ensure it looks somewhat like a media or embed URL
+        if (!videoUrl.includes('.mp4') && !videoUrl.includes('.m3u8') && !videoUrl.includes('youtube') && !videoUrl.includes('embed') && !videoUrl.includes('/video')) {
+            return null;
+        }
 
         return {
             title: finalTitle,
