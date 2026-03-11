@@ -337,6 +337,46 @@ export class BotService implements OnModuleInit {
                     seo_keywords: seoKeywords
                 }
             });
+
+            // HYBRID: Also save to News
+            const existingNews = await this.prisma.news.findFirst({
+                where: { original_url: data.original_url }
+            });
+            if (!existingNews) {
+                const categoryStr = data.category || 'video';
+                const categoryData = await this.prisma.category.findFirst({
+                    where: { OR: [{ slug: categoryStr }, { name: categoryStr }] }
+                });
+                
+                let uniqueSlug = slug;
+                let counter = 1;
+                while (await this.prisma.news.findUnique({ where: { slug: uniqueSlug } })) {
+                    uniqueSlug = `${slug}-${counter}`;
+                    counter++;
+                }
+
+                await this.prisma.news.create({
+                    data: {
+                        title: data.title,
+                        slug: uniqueSlug,
+                        summary: seoDescription,
+                        image_url: data.thumbnail_url || null,
+                        category: categoryStr,
+                        category_id: categoryData?.id || null,
+                        original_url: data.original_url,
+                        source: data.source,
+                        author: data.author || null,
+                        published_at: new Date(),
+                        seo_title: data.title,
+                        seo_description: seoDescription,
+                        seo_keywords: seoKeywords,
+                        media_type: 'video',
+                        video_url: data.video_url,
+                        is_active: settings ? settings.auto_publish : false
+                    }
+                });
+            }
+
             this.logger.log(`Successfully saved video: ${data.title} (Source: ${data.source})`);
             return true;
         } catch (error) {
@@ -414,6 +454,45 @@ export class BotService implements OnModuleInit {
                     }
                 }
             });
+
+            // HYBRID: Also save to News
+            const existingNews = await this.prisma.news.findFirst({
+                where: { original_url: data.original_url }
+            });
+            if (!existingNews) {
+                const categoryStr = data.category || 'galeri';
+                const categoryData = await this.prisma.category.findFirst({
+                    where: { OR: [{ slug: categoryStr }, { name: categoryStr }] }
+                });
+                
+                let uniqueSlug = slug;
+                let counter = 1;
+                while (await this.prisma.news.findUnique({ where: { slug: uniqueSlug } })) {
+                    uniqueSlug = `${slug}-${counter}`;
+                    counter++;
+                }
+
+                await this.prisma.news.create({
+                    data: {
+                        title: data.title,
+                        slug: uniqueSlug,
+                        summary: seoDescription,
+                        image_url: data.thumbnail_url || (data.images && data.images.length > 0 ? data.images[0].url : null),
+                        category: categoryStr,
+                        category_id: categoryData?.id || null,
+                        original_url: data.original_url,
+                        source: data.source,
+                        author: data.author || null,
+                        published_at: new Date(),
+                        seo_title: data.title,
+                        seo_description: seoDescription,
+                        seo_keywords: seoKeywords,
+                        media_type: 'gallery',
+                        is_active: settings ? settings.auto_publish : false
+                    }
+                });
+            }
+
             this.logger.log(`Successfully saved gallery: ${data.title} (Source: ${data.source})`);
             return true;
         } catch (error) {
