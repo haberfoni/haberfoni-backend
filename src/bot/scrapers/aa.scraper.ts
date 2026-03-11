@@ -3,7 +3,9 @@ import * as cheerio from 'cheerio';
 import axios from 'axios';
 import * as Parser from 'rss-parser';
 
-const parser = new Parser.default();
+const parser = new Parser.default({
+    timeout: 30000,
+});
 
 // Images that should never appear in articles
 const BLOCKED_IMAGE_PATTERNS = [

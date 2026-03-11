@@ -29,11 +29,31 @@ export class BotService implements OnModuleInit {
             for (const agency of agencies) {
                 await this.prisma.botSetting.upsert({
                     where: { source_name: agency },
-                    update: { is_active: true, auto_publish: true },
-                    create: { source_name: agency, is_active: true, auto_publish: true }
+                    update: { is_active: true, auto_publish: true, use_ai_rewrite: true },
+                    create: { source_name: agency, is_active: true, auto_publish: true, use_ai_rewrite: true }
                 });
             }
-            this.logger.log('Bot settings ensured: AA, IHA, DHA are ACTIVE and AUTO_PUBLISH is ON');
+            this.logger.log('Bot settings ensured: AA, IHA, DHA are ACTIVE, AI and AUTO_PUBLISH are ON');
+
+            const mappingsCount = await this.prisma.botCategoryMapping.count();
+            if (mappingsCount === 0) {
+                const defaultMappings = [
+                    { source_name: 'IHA', source_url: 'https://www.iha.com.tr/guncel', target_category: 'guncel', is_active: true },
+                    { source_name: 'IHA', source_url: 'https://www.iha.com.tr/video-galeri', target_category: 'videoGallery', is_active: true },
+                    { source_name: 'IHA', source_url: 'https://www.iha.com.tr/foto-galeri', target_category: 'photoGallery', is_active: true },
+                    { source_name: 'DHA', source_url: 'https://www.dha.com.tr/gundem', target_category: 'gundem', is_active: true },
+                    { source_name: 'DHA', source_url: 'https://www.dha.com.tr/foto-galeri', target_category: 'photoGallery', is_active: true },
+                    { source_name: 'DHA', source_url: 'https://www.dha.com.tr/video-galeri/gundem', target_category: 'videoGallery', is_active: true },
+                    { source_name: 'AA', source_url: 'https://www.aa.com.tr/tr/gundem', target_category: 'gundem', is_active: true },
+                    { source_name: 'AA', source_url: 'https://www.aa.com.tr/tr/video-galerisi', target_category: 'videoGallery', is_active: true },
+                    { source_name: 'AA', source_url: 'https://www.aa.com.tr/tr/fotoraf-galerisi', target_category: 'photoGallery', is_active: true },
+                ];
+                await this.prisma.botCategoryMapping.createMany({
+                    data: defaultMappings,
+                    skipDuplicates: true
+                });
+                this.logger.log('Default bot category mappings ensured (Photo/Video Gallery included).');
+            }
         } catch (error) {
             this.logger.error(`Failed to ensure bot settings: ${error.message}`);
         }

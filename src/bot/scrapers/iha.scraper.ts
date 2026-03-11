@@ -7,7 +7,9 @@ import * as https from 'https';
 
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
-const parser = new Parser.default();
+const parser = new Parser.default({
+    timeout: 30000,
+});
 
 const BLOCKED_IMAGE_PATTERNS = [
     'bip.png', 'bip.jpg',
