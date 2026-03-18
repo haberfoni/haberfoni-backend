@@ -15,6 +15,14 @@ jobs:
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            cd /root/haberfoni-backend
-            git pull origin main
-            docker compose up -d --build backend
+            echo "--- Starting Deployment at $(date) ---"
+            cd /root/haberfoni-backend || { echo "ERROR: Could not find /root/haberfoni-backend directory"; exit 1; }
+            echo "Current Path: $(pwd)"
+            git pull origin main || { echo "ERROR: Git pull failed"; exit 1; }
+            
+            if command -v docker-compose &> /dev/null; then
+              docker-compose up -d --build backend
+            else
+              docker compose up -d --build backend
+            fi
+            echo "--- Deployment Finished Successfully ---"
