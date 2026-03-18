@@ -274,14 +274,30 @@ export class BotService implements OnModuleInit {
 
             // 2. Ensure Mappings
             const mappings = [
+                { source_name: 'IHA', source_url: 'https://www.iha.com.tr/gundem', target_category: 'gundem' },
+                { source_name: 'IHA', source_url: 'https://www.iha.com.tr/ekonomi', target_category: 'ekonomi' },
+                { source_name: 'IHA', source_url: 'https://www.iha.com.tr/spor', target_category: 'spor' },
+                { source_name: 'IHA', source_url: 'https://www.iha.com.tr/politika', target_category: 'politika' },
+                { source_name: 'IHA', source_url: 'https://www.iha.com.tr/dunya', target_category: 'dunya' },
+                { source_name: 'IHA', source_url: 'https://www.iha.com.tr/magazin', target_category: 'magazin' },
+                { source_name: 'IHA', source_url: 'https://www.iha.com.tr/teknoloji', target_category: 'teknoloji' },
+                { source_name: 'IHA', source_url: 'https://www.iha.com.tr/saglik', target_category: 'saglik' },
+                { source_name: 'DHA', source_url: 'https://www.dha.com.tr/gundem', target_category: 'gundem' },
+                { source_name: 'DHA', source_url: 'https://www.dha.com.tr/ekonomi', target_category: 'ekonomi' },
+                { source_name: 'DHA', source_url: 'https://www.dha.com.tr/spor', target_category: 'spor' },
+                { source_name: 'DHA', source_url: 'https://www.dha.com.tr/dunya', target_category: 'dunya' },
+                { source_name: 'DHA', source_url: 'https://www.dha.com.tr/teknoloji', target_category: 'teknoloji' },
+                { source_name: 'DHA', source_url: 'https://www.dha.com.tr/saglik-yasam', target_category: 'saglik' },
+                { source_name: 'DHA', source_url: 'https://www.dha.com.tr/kultur-sanat', target_category: 'kultur-sanat' },
                 { source_name: 'IHA', source_url: 'https://www.iha.com.tr/video', target_category: 'video-galeri' },
-                { source_name: 'IHA', source_url: 'https://www.iha.com.tr/foto-galeri', target_category: 'foto-galeri' },
+                { source_name: 'IHA', source_url: 'https://www.iha.com.tr/foto', target_category: 'foto-galeri' },
                 { source_name: 'DHA', source_url: 'https://www.dha.com.tr/video', target_category: 'video-galeri' },
                 { source_name: 'DHA', source_url: 'https://www.dha.com.tr/foto-galeri', target_category: 'foto-galeri' },
                 { source_name: 'AA', source_url: 'https://www.aa.com.tr/tr/video', target_category: 'video-galeri' },
                 { source_name: 'AA', source_url: 'https://www.aa.com.tr/tr/foto-galeri', target_category: 'foto-galeri' },
                 { source_name: 'AA', source_url: 'https://www.aa.com.tr/tr/video-galerisi', target_category: 'video-galeri' },
-                { source_name: 'AA', source_url: 'https://www.aa.com.tr/tr/fotoraf-galerisi', target_category: 'foto-galeri' }
+                { source_name: 'AA', source_url: 'https://www.aa.com.tr/tr/fotoraf-galerisi', target_category: 'foto-galeri' },
+                { source_name: 'IHA', source_url: 'https://www.iha.com.tr/foto-galeri', target_category: 'foto-galeri' }
             ];
 
             for (const m of mappings) {
