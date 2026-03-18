@@ -8,35 +8,43 @@ datasource db {
 }
 
 model News {
-  id              Int        @id @default(autoincrement())
-  title           String     @db.VarChar(255)
-  slug            String     @unique @db.VarChar(255)
-  summary         String?    @db.Text
-  content         String?    @db.LongText
-  image_url       String?    @db.Text
-  category        String?    @db.VarChar(100)
-  category_id     Int?
-  original_url    String?    @unique @db.VarChar(512)
-  source          String?    @db.VarChar(100)
-  author          String?    @db.VarChar(100)
-  author_id       String?    @db.VarChar(100)
-  published_at    DateTime?
-  is_active       Boolean    @default(true)
-  views           Int        @default(0)
-  is_slider       Boolean    @default(false)
-  media_type      String?    @default("image") @db.VarChar(50)
-  video_url       String?    @db.Text
-  updater_id      String?    @db.VarChar(100)
-  seo_title       String?    @db.VarChar(255)
-  seo_description String?    @db.VarChar(512)
-  seo_keywords    String?    @db.VarChar(255)
-  created_at      DateTime   @default(now())
-  updated_at      DateTime   @updatedAt
-  TargetedAds     Ad[]
-  Comments        Comment[]
-  Headlines       Headline[]
-  Category        Category?  @relation(fields: [category_id], references: [id])
-  NewsTags        NewsTag[]
+  id                 Int        @id @default(autoincrement())
+  title              String     @db.VarChar(255)
+  slug               String     @unique @db.VarChar(255)
+  summary            String?    @db.Text
+  content            String?    @db.LongText
+  image_url          String?    @db.Text
+  category           String?    @db.VarChar(255)
+  category_id        Int?
+  original_url       String?    @unique @db.VarChar(512)
+  source             String?    @db.VarChar(100)
+  author             String?    @db.VarChar(255)
+  ai_model           String?    @db.VarChar(100)
+  author_id          String?    @db.VarChar(100)
+  published_at       DateTime?
+  is_active          Boolean    @default(true)
+  views              Int        @default(0)
+  is_slider          Boolean    @default(false)
+  media_type         String?    @default("image") @db.VarChar(50)
+  video_url          String?    @db.Text
+  updater_id         String?    @db.VarChar(100)
+  seo_title          String?    @db.VarChar(255)
+  seo_description    String?    @db.VarChar(512)
+  seo_keywords       String?    @db.VarChar(255)
+  title_en           String?    @db.VarChar(255)
+  summary_en         String?    @db.Text
+  content_en         String?    @db.LongText
+  seo_title_en       String?    @db.VarChar(255)
+  seo_description_en String?    @db.VarChar(512)
+  seo_keywords_en    String?    @db.VarChar(255)
+  social_posts       Json?
+  created_at         DateTime   @default(now())
+  updated_at         DateTime   @updatedAt
+  TargetedAds        Ad[]
+  Comments           Comment[]
+  Headlines          Headline[]
+  Category           Category?  @relation(fields: [category_id], references: [id])
+  NewsTags           NewsTag[]
 
   @@index([category])
   @@index([slug])
@@ -46,17 +54,19 @@ model News {
 }
 
 model Category {
-  id              Int      @id @default(autoincrement())
-  name            String   @db.VarChar(100)
-  slug            String   @unique @db.VarChar(100)
-  order_index     Int      @default(0)
-  is_active       Boolean  @default(true)
-  seo_title       String?  @db.VarChar(255)
-  seo_description String?  @db.VarChar(512)
-  seo_keywords    String?  @db.VarChar(255)
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
-  News            News[]
+  id                 Int      @id @default(autoincrement())
+  name               String   @db.VarChar(100)
+  slug               String   @unique @db.VarChar(100)
+  order_index        Int      @default(0)
+  is_active          Boolean  @default(true)
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+  description_en     String?  @db.VarChar(255)
+  name_en            String?  @db.VarChar(100)
+  seo_description_en String?  @db.VarChar(512)
+  seo_keywords_en    String?  @db.VarChar(255)
+  seo_title_en       String?  @db.VarChar(255)
+  News               News[]
 
   @@map("categories")
 }
@@ -128,6 +138,8 @@ model Page {
   is_active        Boolean  @default(true)
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
+  content_en       String?  @db.LongText
+  title_en         String?  @db.VarChar(255)
 
   @@map("pages")
 }
@@ -142,15 +154,16 @@ model SiteSetting {
 }
 
 model BotSetting {
-  id             Int      @id @default(autoincrement())
-  source_name    String   @unique @db.VarChar(50)
-  is_active      Boolean  @default(true)
-  auto_publish   Boolean  @default(false)
-  daily_limit    Int      @default(100)
-  config         String?  @db.Text
-  created_at     DateTime @default(now())
-  updated_at     DateTime @updatedAt
-  use_ai_rewrite Boolean  @default(false)
+  id                 Int      @id @default(autoincrement())
+  source_name        String   @unique @db.VarChar(50)
+  is_active          Boolean  @default(true)
+  auto_publish       Boolean  @default(false)
+  daily_limit        Int      @default(100)
+  config             String?  @db.Text
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+  use_ai_rewrite     Boolean  @default(false)
+  use_free_translate Boolean  @default(true)
 
   @@map("bot_settings")
 }
@@ -175,6 +188,7 @@ model BotCategoryMapping {
   last_scraped_at DateTime?
   last_status     String?
   last_item_count Int       @default(0)
+  last_error      String?   @db.Text
   created_at      DateTime  @default(now())
   updated_at      DateTime  @updatedAt
 
@@ -188,6 +202,7 @@ model FooterSection {
   created_at  DateTime     @default(now())
   is_active   Boolean      @default(true)
   type        String       @default("custom_links") @db.VarChar(50)
+  title_en    String?      @db.VarChar(100)
   Links       FooterLink[]
 
   @@map("footer_sections")
@@ -202,6 +217,7 @@ model FooterLink {
   target      String?       @default("_self")
   created_at  DateTime      @default(now())
   is_active   Boolean       @default(true)
+  title_en    String?       @db.VarChar(100)
   Section     FooterSection @relation(fields: [section_id], references: [id], onDelete: Cascade)
 
   @@index([section_id], map: "footer_links_section_id_fkey")
@@ -219,13 +235,40 @@ model Redirect {
 }
 
 model Tag {
-  id         Int       @id @default(autoincrement())
-  name       String    @unique @db.VarChar(100)
-  slug       String    @unique @db.VarChar(100)
-  created_at DateTime  @default(now())
-  NewsTags   NewsTag[]
+  id               Int               @id @default(autoincrement())
+  name             String            @unique @db.VarChar(100)
+  slug             String            @unique @db.VarChar(100)
+  created_at       DateTime          @default(now())
+  name_en          String?           @db.VarChar(100)
+  NewsTags         NewsTag[]
+  PhotoGalleryTags PhotoGalleryTag[]
+  VideoTags        VideoTag[]
 
   @@map("tags")
+}
+
+model VideoTag {
+  video_id   Int
+  tag_id     Int
+  created_at DateTime @default(now())
+  Tag        Tag      @relation(fields: [tag_id], references: [id], onDelete: Cascade)
+  Video      Video    @relation(fields: [video_id], references: [id], onDelete: Cascade)
+
+  @@id([video_id, tag_id])
+  @@index([tag_id], map: "video_tags_tag_id_fkey")
+  @@map("video_tags")
+}
+
+model PhotoGalleryTag {
+  gallery_id Int
+  tag_id     Int
+  created_at DateTime     @default(now())
+  Gallery    PhotoGallery @relation(fields: [gallery_id], references: [id], onDelete: Cascade)
+  Tag        Tag          @relation(fields: [tag_id], references: [id], onDelete: Cascade)
+
+  @@id([gallery_id, tag_id])
+  @@index([tag_id], map: "photo_gallery_tags_tag_id_fkey")
+  @@map("photo_gallery_tags")
 }
 
 model NewsTag {
@@ -288,44 +331,60 @@ model ActivityLog {
 }
 
 model Video {
-  id              Int       @id @default(autoincrement())
-  title           String    @db.VarChar(255)
-  video_url       String    @db.Text
-  thumbnail_url   String?   @db.Text
-  duration        String?   @db.VarChar(50)
-  description     String?   @db.Text
-  views           Int       @default(0)
-  published_at    DateTime?
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
-  seo_description String?   @db.VarChar(512)
-  seo_keywords    String?   @db.VarChar(255)
-  seo_title       String?   @db.VarChar(255)
-  original_url    String?   @db.Text
-  source          String?   @db.VarChar(50)
-  slug            String?   @unique @db.VarChar(255)
-  author          String?   @db.VarChar(100)
+  id                 Int        @id @default(autoincrement())
+  title              String     @db.VarChar(255)
+  video_url          String     @db.Text
+  thumbnail_url      String?    @db.Text
+  duration           String?    @db.VarChar(50)
+  description        String?    @db.Text
+  views              Int        @default(0)
+  published_at       DateTime?
+  created_at         DateTime   @default(now())
+  updated_at         DateTime   @updatedAt
+  seo_description    String?    @db.VarChar(512)
+  seo_keywords       String?    @db.VarChar(255)
+  seo_title          String?    @db.VarChar(255)
+  social_posts       Json?
+  original_url       String?    @db.Text
+  source             String?    @db.VarChar(50)
+  slug               String?    @unique @db.VarChar(255)
+  author             String?    @db.VarChar(100)
+  ai_model           String?    @db.VarChar(50)
+  description_en     String?    @db.Text
+  seo_description_en String?    @db.VarChar(512)
+  seo_keywords_en    String?    @db.VarChar(255)
+  seo_title_en       String?    @db.VarChar(255)
+  title_en           String?    @db.VarChar(255)
+  VideoTags          VideoTag[]
 
   @@map("videos")
 }
 
 model PhotoGallery {
-  id              Int                 @id @default(autoincrement())
-  title           String              @db.VarChar(255)
-  slug            String              @unique @db.VarChar(255)
-  description     String?             @db.Text
-  thumbnail_url   String?             @db.Text
-  views           Int                 @default(0)
-  published_at    DateTime?
-  created_at      DateTime            @default(now())
-  updated_at      DateTime            @updatedAt
-  seo_description String?             @db.VarChar(512)
-  seo_keywords    String?             @db.VarChar(255)
-  seo_title       String?             @db.VarChar(255)
-  original_url    String?             @db.Text
-  source          String?             @db.VarChar(50)
-  author          String?             @db.VarChar(100)
-  gallery_images  PhotoGalleryImage[]
+  id                 Int                 @id @default(autoincrement())
+  title              String              @db.VarChar(255)
+  slug               String              @unique @db.VarChar(255)
+  description        String?             @db.Text
+  thumbnail_url      String?             @db.Text
+  views              Int                 @default(0)
+  published_at       DateTime?
+  created_at         DateTime            @default(now())
+  updated_at         DateTime            @updatedAt
+  seo_description    String?             @db.VarChar(512)
+  seo_keywords       String?             @db.VarChar(255)
+  seo_title          String?             @db.VarChar(255)
+  title_en           String?             @db.VarChar(255)
+  description_en     String?             @db.Text
+  seo_title_en       String?             @db.VarChar(255)
+  seo_description_en String?             @db.VarChar(512)
+  seo_keywords_en    String?             @db.VarChar(255)
+  social_posts       Json?
+  original_url       String?             @db.Text
+  source             String?             @db.VarChar(50)
+  author             String?             @db.VarChar(100)
+  ai_model           String?             @db.VarChar(50)
+  gallery_images     PhotoGalleryImage[]
+  PhotoGalleryTags   PhotoGalleryTag[]
 
   @@map("photo_galleries")
 }
@@ -335,6 +394,7 @@ model PhotoGalleryImage {
   gallery_id  Int
   image_url   String       @db.Text
   caption     String?      @db.Text
+  caption_en  String?      @db.Text
   order_index Int          @default(0)
   created_at  DateTime     @default(now())
   media_type  String?      @default("image") @db.VarChar(50)
