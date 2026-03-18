@@ -6,90 +6,48 @@ import { AiService } from '../ai/ai.service';
 import { scrapeAA } from './scrapers/aa.scraper';
 import { scrapeIHA } from './scrapers/iha.scraper';
 import { scrapeDHA } from './scrapers/dha.scraper';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as crypto from 'crypto';
+import axios from 'axios';
 
 @Injectable()
 export class BotService implements OnModuleInit {
     private readonly logger = new Logger(BotService.name);
+    private readonly UPLOAD_DIR = path.join(process.cwd(), '..', 'public', 'uploads');
 
     constructor(
         private prisma: PrismaService,
         private activityLogsService: ActivityLogsService,
         private aiService: AiService
-    ) { }
+    ) {
+        if (!fs.existsSync(this.UPLOAD_DIR)) {
+            fs.mkdirSync(this.UPLOAD_DIR, { recursive: true });
+        }
+    }
 
     async onModuleInit() {
         this.logger.log('BotService initialized');
         await this.cleanupStuckCommands();
         await this.ensureBotSettings();
+        await this.ensurePermanentCategoriesAndMappings();
     }
 
     async ensureBotSettings() {
         try {
             const agencies = ['AA', 'IHA', 'DHA'];
             for (const agency of agencies) {
-                await this.prisma.botSetting.upsert({
-                    where: { source_name: agency },
-                    update: { is_active: true, auto_publish: true, use_ai_rewrite: true },
-                    create: { source_name: agency, is_active: true, auto_publish: true, use_ai_rewrite: true }
+                const existing = await this.prisma.botSetting.findUnique({
+                    where: { source_name: agency }
                 });
+                if (!existing) {
+                    await this.prisma.botSetting.create({
+                        data: { source_name: agency, is_active: true, auto_publish: true }
+                    });
+                    this.logger.log(`Created default bot setting for ${agency}`);
+                }
             }
-            this.logger.log('Bot settings ensured: AA, IHA, DHA are ACTIVE, AI and AUTO_PUBLISH are ON');
-
-            // Ensure general AI settings if provided in ENV (Use SiteSetting model)
-            if (process.env.AI_API_KEY) {
-                await this.prisma.siteSetting.upsert({
-                    where: { key: 'AI_API_KEY' },
-                    update: {},
-                    create: { key: 'AI_API_KEY', value: process.env.AI_API_KEY }
-                });
-            }
-            if (process.env.AI_API_URL) {
-                await this.prisma.siteSetting.upsert({
-                    where: { key: 'AI_API_URL' },
-                    update: {},
-                    create: { key: 'AI_API_URL', value: process.env.AI_API_URL }
-                });
-            }
-
-            // Ensure default mappings even if some exist (Permanent Gallery and Video support)
-            const defaultMappings = [
-                { source_name: 'IHA', source_url: 'https://www.iha.com.tr/video-galeri', target_category: 'videoGallery', is_active: true },
-                { source_name: 'IHA', source_url: 'https://www.iha.com.tr/foto-galeri', target_category: 'photoGallery', is_active: true },
-                { source_name: 'DHA', source_url: 'https://www.dha.com.tr/foto-galeri', target_category: 'photoGallery', is_active: true },
-                { source_name: 'DHA', source_url: 'https://www.dha.com.tr/video-galeri/gundem', target_category: 'videoGallery', is_active: true },
-                { source_name: 'AA', source_url: 'https://www.aa.com.tr/tr/video-galerisi', target_category: 'videoGallery', is_active: true },
-                { source_name: 'AA', source_url: 'https://www.aa.com.tr/tr/fotoraf-galerisi', target_category: 'photoGallery', is_active: true },
-            ];
-
-            for (const dm of defaultMappings) {
-                await this.prisma.botCategoryMapping.upsert({
-                    where: { source_url: dm.source_url },
-                    update: { target_category: dm.target_category, is_active: true },
-                    create: dm
-                });
-            }
-
-            // Ensure baseline categories exist for panel dropdown
-            const baselineCategories = [
-                { name: 'Gündem', slug: 'gundem', order_index: 1 },
-                { name: 'Dünya', slug: 'dunya', order_index: 2 },
-                { name: 'Ekonomi', slug: 'ekonomi', order_index: 3 },
-                { name: 'Spor', slug: 'spor', order_index: 4 },
-                { name: 'Siyaset', slug: 'siyaset', order_index: 5 },
-                { name: 'Magazin', slug: 'magazin', order_index: 6 },
-                { name: 'Teknoloji', slug: 'teknoloji', order_index: 7 },
-                { name: 'Sağlık', slug: 'saglik', order_index: 8 },
-            ];
-
-            for (const cat of baselineCategories) {
-                await this.prisma.category.upsert({
-                    where: { slug: cat.slug },
-                    update: {},
-                    create: cat
-                });
-            }
-
-            this.logger.log('Permanent gallery mappings and baseline categories ensured.');
+            this.logger.log('Bot settings verified.');
         } catch (error) {
             this.logger.error(`Failed to ensure bot settings: ${error.message}`);
         }
@@ -287,9 +245,61 @@ export class BotService implements OnModuleInit {
     }
 
     async deleteMapping(id: number) {
+        const mapping = await this.prisma.botCategoryMapping.findUnique({ where: { id } });
+        if (mapping && (mapping.target_category === 'foto-galeri' || mapping.target_category === 'video-galeri')) {
+            throw new Error('This mapping is critical and cannot be deleted.');
+        }
         return this.prisma.botCategoryMapping.delete({
             where: { id }
         });
+    }
+
+    async ensurePermanentCategoriesAndMappings() {
+        try {
+            this.logger.log('Ensuring permanent categories and mappings...');
+            
+            // 1. Ensure Categories
+            const categories = [
+                { name: 'Foto Galeri', slug: 'foto-galeri' },
+                { name: 'Video Galeri', slug: 'video-galeri' }
+            ];
+
+            for (const cat of categories) {
+                await this.prisma.category.upsert({
+                    where: { slug: cat.slug },
+                    update: { name: cat.name, is_active: true },
+                    create: { name: cat.name, slug: cat.slug, is_active: true }
+                });
+            }
+
+            // 2. Ensure Mappings
+            const mappings = [
+                { source_name: 'IHA', source_url: 'https://www.iha.com.tr/video', target_category: 'video-galeri' },
+                { source_name: 'IHA', source_url: 'https://www.iha.com.tr/foto-galeri', target_category: 'foto-galeri' },
+                { source_name: 'DHA', source_url: 'https://www.dha.com.tr/video', target_category: 'video-galeri' },
+                { source_name: 'DHA', source_url: 'https://www.dha.com.tr/foto-galeri', target_category: 'foto-galeri' },
+                { source_name: 'AA', source_url: 'https://www.aa.com.tr/tr/video', target_category: 'video-galeri' },
+                { source_name: 'AA', source_url: 'https://www.aa.com.tr/tr/foto-galeri', target_category: 'foto-galeri' },
+                { source_name: 'AA', source_url: 'https://www.aa.com.tr/tr/video-galerisi', target_category: 'video-galeri' },
+                { source_name: 'AA', source_url: 'https://www.aa.com.tr/tr/fotoraf-galerisi', target_category: 'foto-galeri' }
+            ];
+
+            for (const m of mappings) {
+                const existing = await this.prisma.botCategoryMapping.findUnique({
+                    where: { source_url: m.source_url }
+                });
+                if (!existing) {
+                    await this.prisma.botCategoryMapping.create({
+                        data: { ...m, is_active: true }
+                    });
+                    this.logger.log(`Created permanent mapping for ${m.source_url}`);
+                }
+            }
+
+            this.logger.log('Permanent categories and mappings verified.');
+        } catch (error) {
+            this.logger.error(`Failed to ensure permanent items: ${error.message}`);
+        }
     }
 
     async toggleMapping(id: number, isActive: boolean) {
@@ -312,15 +322,54 @@ export class BotService implements OnModuleInit {
         });
     }
 
-    async updateMappingStatus(sourceUrl: string, status: string, count: number) {
-        await this.prisma.botCategoryMapping.updateMany({
-            where: { source_url: sourceUrl },
-            data: {
-                last_scraped_at: new Date(),
-                last_status: status,
-                last_item_count: count,
-            },
-        });
+    async updateMappingStatus(url: string, status: string, count: number, error?: string) {
+        try {
+            await this.prisma.botCategoryMapping.update({
+                where: { source_url: url },
+                data: {
+                    last_scraped_at: new Date(),
+                    last_status: status,
+                    last_item_count: count,
+                    last_error: error || null
+                }
+            });
+        } catch (e) {
+            this.logger.error(`Error updating mapping status for ${url}: ${e.message}`);
+        }
+    }
+
+    private async downloadImage(url: string | null | undefined, source: string, type: string): Promise<string | null> {
+        if (!url || !url.startsWith('http')) return url || null;
+
+        try {
+            const hash = crypto.createHash('md5').update(url).digest('hex');
+            const urlPath = new URL(url).pathname;
+            const ext = path.extname(urlPath) || '.jpg';
+            const filename = `${source.toLowerCase()}_${type}_${hash}${ext}`;
+            const filepath = path.join(this.UPLOAD_DIR, filename);
+
+            // Check if already exists
+            if (fs.existsSync(filepath)) {
+                return `/uploads/${filename}`;
+            }
+
+            // Download
+            const response = await axios.get(url, {
+                responseType: 'arraybuffer',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                    'Referer': new URL(url).origin
+                },
+                timeout: 10000
+            });
+
+            fs.writeFileSync(filepath, response.data);
+            this.logger.debug(`Downloaded image: ${filename} from ${url}`);
+            return `/uploads/${filename}`;
+        } catch (error) {
+            this.logger.warn(`Failed to download image from ${url}: ${error.message}`);
+            return url; // Fallback to original URL
+        }
     }
 
     async saveVideo(data: any) {
@@ -372,29 +421,103 @@ export class BotService implements OnModuleInit {
             }
 
             const slug = data.slug || this.slugify(data.title);
-            const seoDescription = data.description
+            
+            // 3.5 AI Rewrite if enabled
+            let socialPosts: any = null;
+            let finalTitle = data.title;
+            let finalDescription = data.description || '';
+            let aiModel: string | null = null;
+            let author = data.author || data.source;
+            let seoTitle = data.title;
+            let seoDescription = data.description
                 ? data.description.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 160)
                 : '';
-            const seoKeywords = this.generateKeywords(data.title);
+            let seoKeywords = this.generateKeywords(data.title);
 
-            await this.prisma.video.create({
+            if (settings && settings.use_ai_rewrite) {
+                this.logger.log(`AI Rewrite is active for Video from ${data.source}. Attempting rewrite...`);
+                const rewritten = await this.aiService.rewriteVisualContent(data.title, data.description || '');
+                if (rewritten) {
+                    finalTitle = rewritten.title;
+                    finalDescription = rewritten.description;
+                    seoTitle = rewritten.seo_title;
+                    seoDescription = rewritten.seo_description;
+                    seoKeywords = rewritten.seo_keywords;
+                    author = 'Yapay Zeka Editörü';
+                    aiModel = rewritten.model;
+
+                    // Only use AI's English if free translate is NOT active
+                    if (!settings.use_free_translate) {
+                        (data as any).title_en = rewritten.title_en;
+                        (data as any).description_en = rewritten.description_en;
+                        (data as any).seo_title_en = rewritten.seo_title_en;
+                        (data as any).seo_description_en = rewritten.seo_description_en;
+                        (data as any).seo_keywords_en = rewritten.seo_keywords_en;
+                    }
+
+                    this.logger.log(`AI Rewrite SUCCESS for video: ${finalTitle} (${aiModel})`);
+                    
+                    // Generate social posts
+                    socialPosts = await this.aiService.generateSocialPosts(finalTitle, finalDescription.substring(0, 300));
+                } else {
+                    this.logger.warn(`AI Rewrite FAILED or SKIPPED for video: ${data.title}`);
+                }
+                await new Promise(resolve => setTimeout(resolve, 4500));
+            }
+
+            // High Priority: Free Translation (Overrides AI English if both active)
+            if (settings && settings.use_free_translate) {
+                // Basic translation without AI (or overriding AI's English)
+                const [titleEn, descEn] = await Promise.all([
+                    this.aiService.translateFree(finalTitle, 'en'),
+                    this.aiService.translateFree(finalDescription || '', 'en')
+                ]);
+                (data as any).title_en = titleEn;
+                (data as any).description_en = descEn;
+                (data as any).seo_title_en = titleEn;
+                (data as any).seo_description_en = descEn ? descEn.substring(0, 160) : '';
+                this.logger.log(`Free Translation applied (Priority) for video: ${finalTitle}`);
+            }
+
+            // 3.6 Download Thumbnail
+            let localThumbnail = data.thumbnail_url;
+            if (data.thumbnail_url && data.thumbnail_url.startsWith('http')) {
+                const downloaded = await this.downloadImage(data.thumbnail_url, data.source, 'video');
+                if (downloaded) localThumbnail = downloaded;
+            }
+
+            // 4. Create Video
+            const createdVideo = await this.prisma.video.create({
                 data: {
-                    title: data.title,
+                    title: finalTitle,
                     slug,
-                    description: data.description || '',
+                    description: finalDescription,
+                    title_en: (data as any).title_en,
+                    description_en: (data as any).description_en,
                     video_url: data.video_url,
-                    thumbnail_url: data.thumbnail_url,
+                    thumbnail_url: localThumbnail,
                     source: data.source,
-                    author: data.author || null,
+                    author: author,
+                    ai_model: aiModel,
                     original_url: data.original_url,
                     published_at: new Date(),
-                    seo_title: data.title,
+                    seo_title: seoTitle,
                     seo_description: seoDescription,
-                    seo_keywords: seoKeywords
+                    seo_keywords: seoKeywords,
+                    seo_title_en: (data as any).seo_title_en,
+                    seo_description_en: (data as any).seo_description_en,
+                    seo_keywords_en: (data as any).seo_keywords_en,
+                    social_posts: socialPosts || undefined
                 }
             });
 
-            this.logger.log(`Successfully saved video: ${data.title} (Source: ${data.source})`);
+            // 3.6 Tags
+            if (seoKeywords) {
+                const tagIds = await this.getOrCreateTags(seoKeywords);
+                await this.syncVideoTags(createdVideo.id, tagIds);
+            }
+
+            this.logger.log(`Successfully saved video: ${finalTitle} (Source: ${data.source})`);
             return true;
         } catch (error) {
             this.logger.error(`Error saving video [${data.title}] from ${data.source}: ${error.message}`);
@@ -442,37 +565,116 @@ export class BotService implements OnModuleInit {
             }
 
             const slug = data.slug || this.slugify(data.title);
-            const seoDescription = data.description
+
+            // 3.5 AI Rewrite if enabled
+            let socialPosts: any = null;
+            let finalTitle = data.title;
+            let finalDescription = data.description || '';
+            let aiModel: string | null = null;
+            let author = data.author || data.source;
+            let seoTitle = data.title;
+            let seoDescription = data.description
                 ? data.description.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 160)
                 : '';
-            const seoKeywords = this.generateKeywords(data.title);
+            let seoKeywords = this.generateKeywords(data.title);
 
-            await this.prisma.photoGallery.create({
+            if (settings && settings.use_ai_rewrite) {
+                this.logger.log(`AI Rewrite is active for Gallery from ${data.source}. Attempting rewrite...`);
+                const rewritten = await this.aiService.rewriteVisualContent(data.title, data.description || '');
+                if (rewritten) {
+                    finalTitle = rewritten.title;
+                    finalDescription = rewritten.description;
+                    seoKeywords = rewritten.seo_keywords;
+                    author = 'Yapay Zeka Editörü';
+                    aiModel = rewritten.model;
+
+                    // Only use AI's English if free translate is NOT active
+                    if (!settings.use_free_translate) {
+                        (data as any).title_en = rewritten.title_en;
+                        (data as any).description_en = rewritten.description_en;
+                        (data as any).seo_title_en = rewritten.seo_title_en;
+                        (data as any).seo_description_en = rewritten.seo_description_en;
+                        (data as any).seo_keywords_en = rewritten.seo_keywords_en;
+                    }
+
+                    this.logger.log(`AI Rewrite SUCCESS for gallery: ${finalTitle} (${aiModel})`);
+                    
+                    // Generate social posts
+                    socialPosts = await this.aiService.generateSocialPosts(finalTitle, finalDescription.substring(0, 300));
+                } else {
+                    this.logger.warn(`AI Rewrite FAILED or SKIPPED for gallery: ${data.title}`);
+                }
+                await new Promise(resolve => setTimeout(resolve, 4500));
+            }
+
+            // High Priority: Free Translation (Overrides AI English if both active)
+            if (settings && settings.use_free_translate) {
+                // Basic translation without AI
+                const [titleEn, descEn] = await Promise.all([
+                    this.aiService.translateFree(finalTitle, 'en'),
+                    this.aiService.translateFree(finalDescription || '', 'en')
+                ]);
+                (data as any).title_en = titleEn;
+                (data as any).description_en = descEn;
+                (data as any).seo_title_en = titleEn;
+                (data as any).seo_description_en = descEn ? descEn.substring(0, 160) : '';
+                this.logger.log(`Free Translation applied (Priority) for gallery: ${finalTitle}`);
+            }
+
+            const createdGallery = await this.prisma.photoGallery.create({
                 data: {
-                    title: data.title,
+                    title: finalTitle,
                     slug,
-                    description: data.description || '',
-                    thumbnail_url: data.thumbnail_url || '',
+                    description: finalDescription,
+                    title_en: (data as any).title_en,
+                    description_en: (data as any).description_en,
+                    thumbnail_url: await this.downloadImage(data.thumbnail_url, data.source, 'gallery'),
                     source: data.source,
-                    author: data.author || null,
+                    author: author,
+                    ai_model: aiModel,
                     original_url: data.original_url,
                     published_at: new Date(),
-                    seo_title: data.title,
+                    seo_title: seoTitle,
                     seo_description: seoDescription,
                     seo_keywords: seoKeywords,
+                    seo_title_en: (data as any).seo_title_en,
+                    seo_description_en: (data as any).seo_description_en,
+                    seo_keywords_en: (data as any).seo_keywords_en,
+                    social_posts: socialPosts || undefined,
                     gallery_images: {
-                        create: data.images ? data.images.map((img: any, index: number) => ({
-                            image_url: img.url,
-                            caption: img.caption || '',
-                            media_type: img.media_type || 'image',
-                            video_url: img.video_url || null,
-                            order_index: index
+                        create: data.images ? await Promise.all(data.images.map(async (img: any, index: number) => {
+                            const imageUrl = await this.downloadImage(img.url, data.source, 'gallery_item');
+                            let caption_en: string | null = null;
+
+                            // Handle caption translation if enabled
+                            if (settings && settings.use_free_translate && img.caption) {
+                                try {
+                                    caption_en = await this.aiService.translateFree(img.caption, 'en');
+                                } catch (e) {
+                                    this.logger.warn(`Failed to translate gallery image caption: ${e.message}`);
+                                }
+                            }
+
+                            return {
+                                image_url: imageUrl,
+                                caption: img.caption || '',
+                                caption_en: caption_en,
+                                media_type: img.media_type || 'image',
+                                video_url: img.video_url || null,
+                                order_index: index
+                            };
                         })) : []
                     }
                 }
             });
 
-            this.logger.log(`Successfully saved gallery: ${data.title} (Source: ${data.source})`);
+            // 3.6 Tags
+            if (seoKeywords) {
+                const tagIds = await this.getOrCreateTags(seoKeywords);
+                await this.syncGalleryTags(createdGallery.id, tagIds);
+            }
+
+            this.logger.log(`Successfully saved gallery: ${finalTitle} (Source: ${data.source})`);
             return true;
         } catch (error) {
             this.logger.error(`Error saving gallery [${data.title}] from ${data.source}: ${error.message}`);
@@ -487,45 +689,50 @@ export class BotService implements OnModuleInit {
                 this.logger.verbose(`Skipping generic news title: ${newsItem.title}`);
                 return false;
             }
+
+            // 0. Get Settings early for logic control
+            const settings = await this.prisma.botSetting.findUnique({
+                where: { source_name: newsItem.source },
+            });
+            if (settings && !settings.is_active) return false;
+
             // 1. Check existence
             const existing = await this.prisma.news.findFirst({
                 where: { original_url: newsItem.original_url },
             });
 
             if (existing) {
-                this.logger.debug(`News already exists (Original URL: ${newsItem.original_url})`);
-                // ... update logic ...
-                // Update missing content AND missing image_url
-                const needsContentUpdate = (!existing.content || existing.content.length < 400) && (newsItem.content && newsItem.content.length > 400);
-                const needsImageUpdate = !existing.image_url && newsItem.image_url;
-                if (needsContentUpdate || needsImageUpdate) {
+                const needsImageUpdate = existing.image_url === null && newsItem.image_url;
+                
+                if (needsImageUpdate) {
+                    this.logger.log(`Updating missing image for existing news item: ${existing.id}`);
+                    const localImageUrl = await this.downloadImage(newsItem.image_url, newsItem.source, 'news_update');
                     await this.prisma.news.update({
                         where: { id: existing.id },
-                        data: {
-                            ...(needsContentUpdate ? { content: newsItem.content, summary: newsItem.summary } : {}),
-                            ...(needsImageUpdate ? { image_url: newsItem.image_url } : {}),
-                        }
+                        data: { image_url: localImageUrl }
                     });
-                    return true;
                 }
+                
+                this.logger.verbose(`Skipping existing news (Content protected): ${newsItem.title.substring(0, 50)}...`);
                 return false;
             }
 
-            // 2. Get Settings
-            const settings = await this.prisma.botSetting.findUnique({
-                where: { source_name: newsItem.source },
-            });
-
-            if (settings && !settings.is_active) return false;
+            // 2. Settings already loaded at the top
             const shouldPublish = settings ? settings.auto_publish : false;
 
             // 3. Category ID
-            const category = await this.prisma.category.findUnique({
-                where: { slug: newsItem.category },
+            const category = await this.prisma.category.findFirst({
+                where: { 
+                    OR: [
+                        { slug: newsItem.category },
+                        { name: newsItem.category }
+                    ]
+                },
             });
             const categoryId = category ? category.id : null;
 
             // 3.5 AI Rewrite if enabled
+            let socialPosts: any = null;
             if (settings && settings.use_ai_rewrite) {
                 this.logger.log(`AI Rewrite is active for ${newsItem.source}. Attempting rewrite...`);
                 const rewritten = await this.aiService.rewriteNews(newsItem.title, newsItem.summary, newsItem.content);
@@ -533,13 +740,39 @@ export class BotService implements OnModuleInit {
                     newsItem.title = rewritten.title;
                     newsItem.summary = rewritten.summary;
                     newsItem.content = rewritten.content;
+                    
+                    // Always keep AI provided translations if available
+                    newsItem.title_en = rewritten.title_en || newsItem.title_en;
+                    newsItem.summary_en = rewritten.summary_en || newsItem.summary_en;
+                    newsItem.content_en = rewritten.content_en || newsItem.content_en;
+                    newsItem.seo_title_en = rewritten.seo_title_en || newsItem.title_en;
+                    newsItem.seo_description_en = rewritten.seo_description_en || (newsItem.summary_en ? newsItem.summary_en.substring(0, 160) : '');
+                    newsItem.seo_keywords_en = rewritten.seo_keywords_en || '';
+                    
                     newsItem.author = 'Yapay Zeka Editörü';
-                    this.logger.log(`AI Rewrite SUCCESS for: ${newsItem.title}`);
+                    (newsItem as any).ai_model = rewritten.model;
+                    this.logger.log(`AI Rewrite SUCCESS for: ${newsItem.title} (${rewritten.model})`);
                 } else {
                     this.logger.warn(`AI Rewrite FAILED or SKIPPED for: ${newsItem.title}`);
                 }
                 // Central delay to respect AI RPM limits (Gemini free is 15 RPM ~ 1 per 4s)
                 await new Promise(resolve => setTimeout(resolve, 4500));
+            }
+
+            // Priority 2: Use Free Translation ONLY if we don't have English yet
+            if (settings && settings.use_free_translate && !newsItem.title_en) {
+                this.logger.log(`Starting Free Translation for news: ${newsItem.title}`);
+                const [titleEn, summaryEn, contentEn] = await Promise.all([
+                    this.aiService.translateFree(newsItem.title, 'en'),
+                    this.aiService.translateFree(newsItem.summary || '', 'en'),
+                    this.aiService.translateHtmlFree(newsItem.content || '', 'en')
+                ]);
+                newsItem.title_en = titleEn;
+                newsItem.summary_en = summaryEn;
+                newsItem.content_en = contentEn;
+                newsItem.seo_title_en = titleEn;
+                newsItem.seo_description_en = summaryEn ? summaryEn.substring(0, 160) : '';
+                this.logger.log(`Free Translation applied (Result Length: ${titleEn?.length || 0}) for news: ${newsItem.title}`);
             }
 
             // Clean up messy HTML content if AI didn't rewrite it
@@ -576,7 +809,10 @@ export class BotService implements OnModuleInit {
                     slug: slug,
                     summary: newsItem.summary,
                     content: newsItem.content,
-                    image_url: newsItem.image_url,
+                    title_en: newsItem.title_en,
+                    summary_en: newsItem.summary_en,
+                    content_en: newsItem.content_en,
+                    image_url: await this.downloadImage(newsItem.image_url, newsItem.source, 'news'),
                     category: newsItem.category,
                     category_id: categoryId,
                     original_url: newsItem.original_url,
@@ -588,6 +824,11 @@ export class BotService implements OnModuleInit {
                     seo_title: newsItem.title,
                     seo_description: seoDescription,
                     seo_keywords: seoKeywords,
+                    seo_title_en: newsItem.seo_title_en,
+                    seo_description_en: newsItem.seo_description_en,
+                    seo_keywords_en: newsItem.seo_keywords_en,
+                    social_posts: socialPosts || undefined,
+                    ai_model: (newsItem as any).ai_model || null,
                 },
             });
 
@@ -597,6 +838,12 @@ export class BotService implements OnModuleInit {
                 entity_id: createdNews.id,
                 description: `Haber botu tarafından eklendi: ${newsItem.title} (Kaynak: ${newsItem.source})`
             }).catch(() => { });
+
+            // 6.5 Tags
+            if (seoKeywords) {
+                const tagIds = await this.getOrCreateTags(seoKeywords);
+                await this.syncNewsTags(createdNews.id, tagIds);
+            }
 
             return true;
         } catch (e) {
@@ -659,5 +906,70 @@ export class BotService implements OnModuleInit {
             'Foto Galeri', 'FOTO GALERİ', 'foto galeri'
         ];
         return genericTitles.includes(title.trim());
+    }
+
+    private async getOrCreateTags(keywords: string): Promise<number[]> {
+        if (!keywords) return [];
+        const tagNames = keywords.split(',').map(k => k.trim()).filter(k => k.length > 0);
+        const tagIds: number[] = [];
+
+        for (const name of tagNames) {
+            const slug = this.slugify(name, false);
+            
+            // Try to translate the tag name to English
+            let nameEn: string | null = null;
+            try {
+                // We use translateFree here. It might be slightly slow for many tags, 
+                // but since we process them sequentially in the bot cycle, it's manageable.
+                nameEn = await this.aiService.translateFree(name, 'en');
+            } catch (e) {
+                this.logger.warn(`Failed to translate tag [${name}]: ${e.message}`);
+            }
+
+            const tag = await this.prisma.tag.upsert({
+                where: { slug },
+                update: {
+                   // Update name_en if it was missing
+                   ...(nameEn ? { name_en: nameEn } : {})
+                },
+                create: { 
+                    name, 
+                    slug,
+                    name_en: nameEn
+                }
+            });
+            tagIds.push(tag.id);
+        }
+        return tagIds;
+    }
+
+    private async syncNewsTags(newsId: number, tagIds: number[]) {
+        for (const tagId of tagIds) {
+            await this.prisma.newsTag.upsert({
+                where: { news_id_tag_id: { news_id: newsId, tag_id: tagId } },
+                update: {},
+                create: { news_id: newsId, tag_id: tagId }
+            });
+        }
+    }
+
+    private async syncVideoTags(videoId: number, tagIds: number[]) {
+        for (const tagId of tagIds) {
+            await this.prisma.videoTag.upsert({
+                where: { video_id_tag_id: { video_id: videoId, tag_id: tagId } },
+                update: {},
+                create: { video_id: videoId, tag_id: tagId }
+            });
+        }
+    }
+
+    private async syncGalleryTags(galleryId: number, tagIds: number[]) {
+        for (const tagId of tagIds) {
+            await this.prisma.photoGalleryTag.upsert({
+                where: { gallery_id_tag_id: { gallery_id: galleryId, tag_id: tagId } },
+                update: {},
+                create: { gallery_id: galleryId, tag_id: tagId }
+            });
+        }
     }
 }
