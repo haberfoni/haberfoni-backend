@@ -35,25 +35,61 @@ export class BotService implements OnModuleInit {
             }
             this.logger.log('Bot settings ensured: AA, IHA, DHA are ACTIVE, AI and AUTO_PUBLISH are ON');
 
-            const mappingsCount = await this.prisma.botCategoryMapping.count();
-            if (mappingsCount === 0) {
-                const defaultMappings = [
-                    { source_name: 'IHA', source_url: 'https://www.iha.com.tr/guncel', target_category: 'guncel', is_active: true },
-                    { source_name: 'IHA', source_url: 'https://www.iha.com.tr/video-galeri', target_category: 'videoGallery', is_active: true },
-                    { source_name: 'IHA', source_url: 'https://www.iha.com.tr/foto-galeri', target_category: 'photoGallery', is_active: true },
-                    { source_name: 'DHA', source_url: 'https://www.dha.com.tr/gundem', target_category: 'gundem', is_active: true },
-                    { source_name: 'DHA', source_url: 'https://www.dha.com.tr/foto-galeri', target_category: 'photoGallery', is_active: true },
-                    { source_name: 'DHA', source_url: 'https://www.dha.com.tr/video-galeri/gundem', target_category: 'videoGallery', is_active: true },
-                    { source_name: 'AA', source_url: 'https://www.aa.com.tr/tr/gundem', target_category: 'gundem', is_active: true },
-                    { source_name: 'AA', source_url: 'https://www.aa.com.tr/tr/video-galerisi', target_category: 'videoGallery', is_active: true },
-                    { source_name: 'AA', source_url: 'https://www.aa.com.tr/tr/fotoraf-galerisi', target_category: 'photoGallery', is_active: true },
-                ];
-                await this.prisma.botCategoryMapping.createMany({
-                    data: defaultMappings,
-                    skipDuplicates: true
+            // Ensure general AI settings if provided in ENV (Use SiteSetting model)
+            if (process.env.AI_API_KEY) {
+                await this.prisma.siteSetting.upsert({
+                    where: { key: 'AI_API_KEY' },
+                    update: {},
+                    create: { key: 'AI_API_KEY', value: process.env.AI_API_KEY }
                 });
-                this.logger.log('Default bot category mappings ensured (Photo/Video Gallery included).');
             }
+            if (process.env.AI_API_URL) {
+                await this.prisma.siteSetting.upsert({
+                    where: { key: 'AI_API_URL' },
+                    update: {},
+                    create: { key: 'AI_API_URL', value: process.env.AI_API_URL }
+                });
+            }
+
+            // Ensure default mappings even if some exist (Permanent Gallery and Video support)
+            const defaultMappings = [
+                { source_name: 'IHA', source_url: 'https://www.iha.com.tr/video-galeri', target_category: 'videoGallery', is_active: true },
+                { source_name: 'IHA', source_url: 'https://www.iha.com.tr/foto-galeri', target_category: 'photoGallery', is_active: true },
+                { source_name: 'DHA', source_url: 'https://www.dha.com.tr/foto-galeri', target_category: 'photoGallery', is_active: true },
+                { source_name: 'DHA', source_url: 'https://www.dha.com.tr/video-galeri/gundem', target_category: 'videoGallery', is_active: true },
+                { source_name: 'AA', source_url: 'https://www.aa.com.tr/tr/video-galerisi', target_category: 'videoGallery', is_active: true },
+                { source_name: 'AA', source_url: 'https://www.aa.com.tr/tr/fotoraf-galerisi', target_category: 'photoGallery', is_active: true },
+            ];
+
+            for (const dm of defaultMappings) {
+                await this.prisma.botCategoryMapping.upsert({
+                    where: { source_url: dm.source_url },
+                    update: { target_category: dm.target_category, is_active: true },
+                    create: dm
+                });
+            }
+
+            // Ensure baseline categories exist for panel dropdown
+            const baselineCategories = [
+                { name: 'Gündem', slug: 'gundem', order_index: 1 },
+                { name: 'Dünya', slug: 'dunya', order_index: 2 },
+                { name: 'Ekonomi', slug: 'ekonomi', order_index: 3 },
+                { name: 'Spor', slug: 'spor', order_index: 4 },
+                { name: 'Siyaset', slug: 'siyaset', order_index: 5 },
+                { name: 'Magazin', slug: 'magazin', order_index: 6 },
+                { name: 'Teknoloji', slug: 'teknoloji', order_index: 7 },
+                { name: 'Sağlık', slug: 'saglik', order_index: 8 },
+            ];
+
+            for (const cat of baselineCategories) {
+                await this.prisma.category.upsert({
+                    where: { slug: cat.slug },
+                    update: {},
+                    create: cat
+                });
+            }
+
+            this.logger.log('Permanent gallery mappings and baseline categories ensured.');
         } catch (error) {
             this.logger.error(`Failed to ensure bot settings: ${error.message}`);
         }
@@ -358,45 +394,6 @@ export class BotService implements OnModuleInit {
                 }
             });
 
-            // HYBRID: Also save to News
-            const existingNews = await this.prisma.news.findFirst({
-                where: { original_url: data.original_url }
-            });
-            if (!existingNews) {
-                const categoryStr = data.category || 'video';
-                const categoryData = await this.prisma.category.findFirst({
-                    where: { OR: [{ slug: categoryStr }, { name: categoryStr }] }
-                });
-                
-                let uniqueSlug = slug;
-                let counter = 1;
-                while (await this.prisma.news.findUnique({ where: { slug: uniqueSlug } })) {
-                    uniqueSlug = `${slug}-${counter}`;
-                    counter++;
-                }
-
-                await this.prisma.news.create({
-                    data: {
-                        title: data.title,
-                        slug: uniqueSlug,
-                        summary: seoDescription,
-                        image_url: data.thumbnail_url || null,
-                        category: categoryStr,
-                        category_id: categoryData?.id || null,
-                        original_url: data.original_url,
-                        source: data.source,
-                        author: data.author || null,
-                        published_at: new Date(),
-                        seo_title: data.title,
-                        seo_description: seoDescription,
-                        seo_keywords: seoKeywords,
-                        media_type: 'video',
-                        video_url: data.video_url,
-                        is_active: settings ? settings.auto_publish : false
-                    }
-                });
-            }
-
             this.logger.log(`Successfully saved video: ${data.title} (Source: ${data.source})`);
             return true;
         } catch (error) {
@@ -474,44 +471,6 @@ export class BotService implements OnModuleInit {
                     }
                 }
             });
-
-            // HYBRID: Also save to News
-            const existingNews = await this.prisma.news.findFirst({
-                where: { original_url: data.original_url }
-            });
-            if (!existingNews) {
-                const categoryStr = data.category || 'galeri';
-                const categoryData = await this.prisma.category.findFirst({
-                    where: { OR: [{ slug: categoryStr }, { name: categoryStr }] }
-                });
-                
-                let uniqueSlug = slug;
-                let counter = 1;
-                while (await this.prisma.news.findUnique({ where: { slug: uniqueSlug } })) {
-                    uniqueSlug = `${slug}-${counter}`;
-                    counter++;
-                }
-
-                await this.prisma.news.create({
-                    data: {
-                        title: data.title,
-                        slug: uniqueSlug,
-                        summary: seoDescription,
-                        image_url: data.thumbnail_url || (data.images && data.images.length > 0 ? data.images[0].url : null),
-                        category: categoryStr,
-                        category_id: categoryData?.id || null,
-                        original_url: data.original_url,
-                        source: data.source,
-                        author: data.author || null,
-                        published_at: new Date(),
-                        seo_title: data.title,
-                        seo_description: seoDescription,
-                        seo_keywords: seoKeywords,
-                        media_type: 'gallery',
-                        is_active: settings ? settings.auto_publish : false
-                    }
-                });
-            }
 
             this.logger.log(`Successfully saved gallery: ${data.title} (Source: ${data.source})`);
             return true;

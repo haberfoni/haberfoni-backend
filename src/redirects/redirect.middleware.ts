@@ -8,7 +8,7 @@ export class RedirectMiddleware implements NestMiddleware {
 
     async use(req: Request, res: Response, next: NextFunction) {
         // Only handle GET requests for non-API routes
-        if (req.method !== 'GET' || req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
+        if (req.method !== 'GET' || req.path.startsWith('/api') || req.path.startsWith('/servis') || req.path.startsWith('/uploads')) {
             return next();
         }
 
