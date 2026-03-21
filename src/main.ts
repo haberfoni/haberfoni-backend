@@ -3,9 +3,24 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  // app.enableCors(); // Disabled: Nginx handles CORS on production. 
-  // Enabling this here causes "multiple values" error in some browsers (e.g. Chrome Incognito) 
-  // when Nginx also adds the Access-Control-Allow-Origin header.
+
+  // CORS: Local geliştirme için açık, production'da Nginx de header ekler
+  // Belirli origin listesi kullanılır — çift header sorununu önler
+  app.enableCors({
+    origin: [
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'http://localhost:3001',
+      'https://haberfoni.com',
+      'https://www.haberfoni.com',
+      'https://admin.haberfoni.com',
+    ],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+  });
+
   await app.listen(process.env.PORT ?? 3000, '0.0.0.0');
 }
 bootstrap();
+
