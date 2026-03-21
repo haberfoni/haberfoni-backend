@@ -18,7 +18,8 @@ jobs:
             echo "--- Starting Deployment at $(date) ---"
             cd /root/haberfoni-backend || { echo "ERROR: Could not find /root/haberfoni-backend directory"; exit 1; }
             echo "Current Path: $(pwd)"
-            git pull origin main || { echo "ERROR: Git pull failed"; exit 1; }
+            git fetch --all || { echo "ERROR: Git fetch failed"; exit 1; }
+            git reset --hard origin/main || { echo "ERROR: Git reset failed"; exit 1; }
             
             if command -v docker-compose &> /dev/null; then
               docker-compose up -d --build backend
