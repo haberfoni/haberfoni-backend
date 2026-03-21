@@ -174,8 +174,19 @@ async function main() {
     }
     console.log('News and Headlines seeded.');
 
-    // Create Admin User (Optional)
-    // ...
+    // Create Admin User
+    const adminUser = await prisma.user.upsert({
+        where: { email: 'ahmetcansertce@hotmail.com' },
+        update: { role: 'admin' },
+        create: {
+            email: 'ahmetcansertce@hotmail.com',
+            password: '123456',
+            full_name: 'Admin User',
+            role: 'admin',
+            is_active: true
+        }
+    });
+    console.log('Admin user created:', adminUser.email);
 }
 
 main()
