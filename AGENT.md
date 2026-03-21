@@ -39,6 +39,45 @@ src/
 prisma/schema.prisma  # Veritabanı şeması (tek kaynak gerçek)
 ```
 
+## ⚠️ KRİTİK — Veritabanı Güvenliği
+
+**SUNUCUDAKI VERİTABANI ÜRETİM VERİSİ İÇERİR. Hiçbir zaman:**
+- `prisma migrate reset` çalıştırma — tüm veriyi siler
+- `prisma db push --force-reset` çalıştırma — tüm veriyi siler
+- `DROP TABLE` veya `TRUNCATE` içeren SQL çalıştırma
+- `docker-compose down -v` çalıştırma — volume'ları ve veriyi siler
+- Production `.env` dosyasındaki `DATABASE_URL`'yi değiştirme
+
+**Güvenli migration:** Sadece `prisma migrate deploy` kullan (sadece yeni migration'ları uygular, veriyi silmez).
+
+**Local vs Production farkı:**
+- Local Docker: `docker-compose down -v` yapılabilir (test verisi)
+- Sunucu: Asla `down -v` yapma, sadece `docker-compose restart` veya `up -d`
+
+## 💾 Veritabanı Yedekleme (Sunucu)
+
+Sunucuda günlük otomatik yedek için crontab'a ekle:
+
+```bash
+# crontab -e ile aç, bunu ekle (her gece 02:00'de çalışır):
+0 2 * * * docker exec haberfoni_db mysqldump -u haberfoni_user -pHaberfoni_Secur3!DB haberfoni > ~/backups/haberfoni_$(date +\%F).sql 2>/dev/null
+
+# Yedek klasörünü oluştur:
+mkdir -p ~/backups
+```
+
+Manuel yedek almak için:
+```bash
+docker exec haberfoni_db mysqldump -u haberfoni_user -pHaberfoni_Secur3!DB haberfoni > ~/backup_manual.sql
+```
+
+Yedeği geri yüklemek için:
+```bash
+docker exec -i haberfoni_db mysql -u haberfoni_user -pHaberfoni_Secur3!DB haberfoni < ~/backup_manual.sql
+```
+
+---
+
 ## Geliştirme Komutları
 
 ```bash
@@ -67,11 +106,13 @@ MYSQL_USER=haberfoni_user
 MYSQL_PASSWORD=...
 DATABASE_URL="mysql://haberfoni_user:PASS@db:3306/haberfoni"
 MYSQL_HOST=localhost
-AI_API_KEY=<Google AI Studio Key>
+AI_API_KEY=<Google AI Studio Key — aistudio.google.com, ücretsiz>
 AI_API_URL=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent
+# Opsiyonel Groq fallback:
+# GROQ_API_KEY=<console.groq.com, ücretsiz>
 ```
 
-**Not:** `DATABASE_URL` içindeki `@db:3306` kısmı Docker network adıdır. Local çalıştırmada `@localhost:3306` olmalı.
+> **Not:** `.env` dosyası artık git'te takip ediliyor (private repo). `.gitignore`'dan çıkarılmıştır.
 
 ## API Endpoint Yapısı
 
