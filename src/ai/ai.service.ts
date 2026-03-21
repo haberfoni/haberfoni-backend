@@ -229,50 +229,31 @@ export class AiService {
   }
 
   async generateSocialPosts(title: string, summary: string): Promise<{ x: string; instagram: string; facebook: string } | null> {
-    const dbApiKey = await this.settingsService.findOne('AI_API_KEY');
-    const dbApiUrl = await this.settingsService.findOne('AI_API_URL');
+    this.logger.log(`AI Social Media post generation for: ${title.substring(0, 50)}...`);
 
-    const apiKey = dbApiKey?.value || process.env.AI_API_KEY;
-    const apiUrl = dbApiUrl?.value || process.env.AI_API_URL || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-latest:generateContent';
+    const prompt = `
+    Aşağıdaki haber için X (Twitter), Instagram ve Facebook platformlarına uygun, etkileşim artırıcı sosyal medya paylaşımları hazırla.
+    Lütfen yanıtında SADECE şu formatı kullan (başka açıklama ekleme):
+    X: [Tweet metni, gerekirse 2-3 tweetlik flood yap, en sonuna hashtag ekle]
+    INSTAGRAM: [Emojili, ilgi çekici açıklama metni ve hashtagler]
+    FACEBOOK: [Haberin özeti ve okumaya teşvik eden profesyonel bir metin]
 
-    if (!apiKey) return null;
+    HABER BAŞLIĞI: ${title}
+    HABER ÖZETİ: ${summary}
+    `;
 
-    try {
-      this.logger.log(`AI Social Media post generation for: ${title.substring(0, 50)}...`);
-      
-      const prompt = `
-      Aşağıdaki haber için X (Twitter), Instagram ve Facebook platformlarına uygun, etkileşim artırıcı sosyal medya paylaşımları hazırla.
-      Lütfen yanıtında SADECE şu formatı kullan (başka açıklama ekleme):
-      X: [Tweet metni, gerekirse 2-3 tweetlik flood yap, en sonuna hashtag ekle]
-      INSTAGRAM: [Emojili, ilgi çekici açıklama metni ve hashtagler]
-      FACEBOOK: [Haberin özeti ve okumaya teşvik eden profesyonel bir metin]
+    const aiText = await this.callAi(prompt);
+    if (!aiText) return null;
 
-      HABER BAŞLIĞI: ${title}
-      HABER ÖZETİ: ${summary}
-      `;
+    const xMatch = aiText.match(/X:\s*([\s\S]*?)(?=INSTAGRAM:|$)/i);
+    const igMatch = aiText.match(/INSTAGRAM:\s*([\s\S]*?)(?=FACEBOOK:|$)/i);
+    const fbMatch = aiText.match(/FACEBOOK:\s*([\s\S]*)/i);
 
-      const response = await axios.post(`${apiUrl}?key=${apiKey}`, {
-        contents: [{
-          parts: [{ text: prompt }]
-        }]
-      });
-
-      const aiText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!aiText) return null;
-
-      const xMatch = aiText.match(/X:\s*([\s\S]*?)(?=INSTAGRAM:|$)/i);
-      const igMatch = aiText.match(/INSTAGRAM:\s*([\s\S]*?)(?=FACEBOOK:|$)/i);
-      const fbMatch = aiText.match(/FACEBOOK:\s*([\s\S]*)/i);
-
-      return {
-        x: xMatch?.[1]?.trim() || '',
-        instagram: igMatch?.[1]?.trim() || '',
-        facebook: fbMatch?.[1]?.trim() || ''
-      };
-    } catch (error) {
-      this.logger.error(`Error generating social posts: ${error.message}`);
-      return null;
-    }
+    return {
+      x: xMatch?.[1]?.trim() || '',
+      instagram: igMatch?.[1]?.trim() || '',
+      facebook: fbMatch?.[1]?.trim() || ''
+    };
   }
   
   async translateFree(text: string, targetLanguage: string = 'en'): Promise<string> {
