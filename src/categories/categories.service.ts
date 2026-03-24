@@ -30,6 +30,12 @@ export class CategoriesService {
     });
   }
 
+  findBySlug(slug: string) {
+    return this.prisma.category.findUnique({
+      where: { slug },
+    });
+  }
+
   update(id: number, updateCategoryDto: UpdateCategoryDto) {
     return this.prisma.category.update({
       where: { id },

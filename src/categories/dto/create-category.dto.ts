@@ -1,5 +1,6 @@
 export class CreateCategoryDto {
     name: string;
+    name_en?: string;
     slug?: string;
     is_active?: boolean;
     order_index?: number;

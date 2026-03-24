@@ -17,9 +17,13 @@ export class CategoriesController {
     return this.categoriesService.findAll();
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.categoriesService.findOne(+id);
+  @Get(':idOrSlug')
+  findOne(@Param('idOrSlug') idOrSlug: string) {
+    const id = parseInt(idOrSlug, 10);
+    if (!isNaN(id)) {
+      return this.categoriesService.findOne(id);
+    }
+    return this.categoriesService.findBySlug(idOrSlug);
   }
 
   @Patch(':id')

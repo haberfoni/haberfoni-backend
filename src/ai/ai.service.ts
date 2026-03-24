@@ -281,13 +281,17 @@ export class AiService {
       // For a more robust version, we would parse with cheerio, but for now, simple translation might suffice or we translate paragraphs.
       const paragraphs = html.split(/<\/p>/i);
       const translatedParagraphs = await Promise.all(paragraphs.map(async p => {
-          if (!p.trim()) return p;
+          if (!p.trim()) return '';
           const cleanText = p.replace(/<[^>]*>/g, '').trim();
-          if (!cleanText) return p;
+          if (!cleanText) return p + '</p>';
           const translatedText = await this.translateFree(cleanText, targetLanguage);
-          return p.replace(cleanText, translatedText);
+          
+          // If cleanText matches exactly, we can try to preserve outer tags,
+          // but if it has inner tags, replace will fail.
+          // Safest to just return the translated text wrapped in <p>
+          return `<p>${translatedText}</p>`;
       }));
-      return translatedParagraphs.join('</p>');
+      return translatedParagraphs.join('');
     } catch (error) {
       return html;
     }

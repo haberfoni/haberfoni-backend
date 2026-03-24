@@ -22,7 +22,7 @@ src/
 ├── ai/               # AI içerik üretimi (Gemini / Groq)
 ├── auth/             # JWT login/register
 ├── bot/              # Bot tetikleme (FORCE_RUN komutu gönderme)
-├── categories/       # Haber kategorileri
+├── categories/       # Haber kategorileri (name_en ve SEO alanları eklendi)
 ├── news/             # Ana haber CRUD
 ├── galleries/        # Fotoğraf galerileri
 ├── videos/           # Video içerikleri
@@ -154,3 +154,16 @@ Modelde değişiklik yapılacaksa:
 ```
 
 Bot container'ı bu compose dosyasında **yok** — bot kendi dizininden yönetilir.
+
+---
+
+## Son Geliştirmeler (24.03.2026)
+
+### Kategori Yerelleştirme ve SEO
+- **Kategori Modeli:** `name_en`, `seo_title`, `seo_description`, `seo_keywords` alanları eklendi.
+- **Slug Desteği:** `CategoriesController`'da `:id` endpoint'i hem sayısal ID hem de string slug destekleyecek şekilde güncellendi (`idOrSlug`).
+- **Veritabanı Senkronizasyonu:** Docker üzerindeki MySQL şeması güncellendi ve Prisma Client yeniden oluşturuldu.
+
+### Dinamik Sayfalar & Footer Veritabanı Optimizasyonu
+- **Sistem Sayfaları:** İletişim, Hakkımızda vb. içerikler `Pages` modeline tam lokalizasyon desteği ile (`title_en`, `content_en`) entegre edildi. Ortak ID/Slug sorgulama mantığı kuruldu.
+- **Footer Veritabanı:** Footer bölüm (`FooterSection`) silme işlemleri sırasında yaşanabilecek Foreign Key ihlallerini önlemek adına `FooterLink` modeline Prisma şeması üzerinden `onDelete: Cascade` kuralı dahil edildi ve MySQL DB'ye (`db push`) aktarıldı.

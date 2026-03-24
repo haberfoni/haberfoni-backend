@@ -1,36 +1,39 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
-@Controller('footer-sections')
-export class FooterSectionsController {
+@Controller('footer-links')
+export class FooterLinksController {
   constructor(private prisma: PrismaService) {}
 
   @Get()
-  async findAll() {
-    const data = await this.prisma.footerSection.findMany({
+  async findAll(@Query('section_id') sectionId?: string) {
+    const where = sectionId ? { section_id: +sectionId } : {};
+    const data = await this.prisma.footerLink.findMany({
+      where,
       orderBy: { order_index: 'asc' },
-      include: { Links: { orderBy: { order_index: 'asc' } } },
     });
     return { status: 'success', data };
   }
 
   @Post()
   async create(@Body() data: any) {
-    const section = await this.prisma.footerSection.create({
+    const link = await this.prisma.footerLink.create({
       data: {
+        section_id: +data.section_id,
         title: data.title,
-        type: data.type || 'custom_links',
-        is_active: data.is_active ?? true,
+        url: data.url,
         order_index: data.order_index || 0,
+        target: data.open_in_new_tab ? '_blank' : '_self',
+        is_active: data.is_active ?? true,
       },
     });
-    return { status: 'success', data: section };
+    return { status: 'success', data: link };
   }
 
   @Patch('reorder')
   async reorder(@Body() items: { id: number; order_index: number }[]) {
     for (const item of items) {
-      await this.prisma.footerSection.update({
+      await this.prisma.footerLink.update({
         where: { id: item.id },
         data: { order_index: item.order_index },
       });
@@ -40,20 +43,22 @@ export class FooterSectionsController {
 
   @Patch(':id')
   async update(@Param('id') id: string, @Body() data: any) {
-    const section = await this.prisma.footerSection.update({
+    const link = await this.prisma.footerLink.update({
       where: { id: +id },
       data: {
         title: data.title,
+        url: data.url,
+        target: data.open_in_new_tab ? '_blank' : '_self',
         is_active: data.is_active,
         title_en: data.title_en,
       },
     });
-    return { status: 'success', data: section };
+    return { status: 'success', data: link };
   }
 
   @Delete(':id')
   async remove(@Param('id') id: string) {
-    await this.prisma.footerSection.delete({ where: { id: +id } });
+    await this.prisma.footerLink.delete({ where: { id: +id } });
     return { status: 'success' };
   }
 }

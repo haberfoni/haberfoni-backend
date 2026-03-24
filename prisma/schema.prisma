@@ -63,9 +63,12 @@ model Category {
   updated_at         DateTime @updatedAt
   description_en     String?  @db.VarChar(255)
   name_en            String?  @db.VarChar(100)
+  seo_title          String?  @db.VarChar(255)
+  seo_description    String?  @db.VarChar(512)
+  seo_keywords       String?  @db.VarChar(255)
+  seo_title_en       String?  @db.VarChar(255)
   seo_description_en String?  @db.VarChar(512)
   seo_keywords_en    String?  @db.VarChar(255)
-  seo_title_en       String?  @db.VarChar(255)
   News               News[]
 
   @@map("categories")
