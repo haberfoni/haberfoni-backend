@@ -21,6 +21,7 @@ export class FooterLinksController {
       data: {
         section_id: +data.section_id,
         title: data.title,
+        title_en: data.title_en,
         url: data.url,
         order_index: data.order_index || 0,
         target: data.open_in_new_tab ? '_blank' : '_self',

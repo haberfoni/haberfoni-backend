@@ -37,7 +37,7 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - uploads_data:/public/uploads
+      - ../public/uploads:/public/uploads
     networks:
       - app_network
 
@@ -47,4 +47,3 @@ networks:
 
 volumes:
   db_data:
-  uploads_data:

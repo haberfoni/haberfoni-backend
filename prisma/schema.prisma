@@ -9,8 +9,8 @@ datasource db {
 
 model News {
   id                 Int        @id @default(autoincrement())
-  title              String     @db.VarChar(255)
-  slug               String     @unique @db.VarChar(255)
+  title              String     @db.VarChar(512)
+  slug               String     @unique @db.VarChar(512)
   summary            String?    @db.Text
   content            String?    @db.LongText
   image_url          String?    @db.Text
@@ -28,13 +28,13 @@ model News {
   media_type         String?    @default("image") @db.VarChar(50)
   video_url          String?    @db.Text
   updater_id         String?    @db.VarChar(100)
-  seo_title          String?    @db.VarChar(255)
+  seo_title          String?    @db.VarChar(512)
   seo_description    String?    @db.VarChar(512)
   seo_keywords       String?    @db.VarChar(255)
-  title_en           String?    @db.VarChar(255)
+  title_en           String?    @db.VarChar(512)
   summary_en         String?    @db.Text
   content_en         String?    @db.LongText
-  seo_title_en       String?    @db.VarChar(255)
+  seo_title_en       String?    @db.VarChar(512)
   seo_description_en String?    @db.VarChar(512)
   seo_keywords_en    String?    @db.VarChar(255)
   social_posts       Json?

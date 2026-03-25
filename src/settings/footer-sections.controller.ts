@@ -19,6 +19,7 @@ export class FooterSectionsController {
     const section = await this.prisma.footerSection.create({
       data: {
         title: data.title,
+        title_en: data.title_en,
         type: data.type || 'custom_links',
         is_active: data.is_active ?? true,
         order_index: data.order_index || 0,

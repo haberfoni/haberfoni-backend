@@ -11,7 +11,7 @@ TypeScript ile yazılmıştır, `npm run build` ile derlenir.
 - **Framework:** NestJS (TypeScript)
 - **ORM:** Prisma (`prisma/schema.prisma`)
 - **Veritabanı:** MySQL 8.0
-- **AI:** Google Gemini (AI Studio — ücretsiz), fallback: Groq
+- **AI:** Google Gemini (AI Studio — ücretsiz), fallback: Groq. (NOT: API Key'ler doğrudan Admin panelinden yönetilir, .env kullanılmaz).
 - **Auth:** JWT tabanlı
 - **Upload:** Lokal dosya sistemi (`/public/uploads/`, Docker volume)
 
@@ -45,7 +45,7 @@ prisma/schema.prisma  # Veritabanı şeması (tek kaynak gerçek)
 - `prisma migrate reset` çalıştırma — tüm veriyi siler
 - `prisma db push --force-reset` çalıştırma — tüm veriyi siler
 - `DROP TABLE` veya `TRUNCATE` içeren SQL çalıştırma
-- `docker-compose down -v` çalıştırma — volume'ları ve veriyi siler
+- `docker-compose down -v` çalıştırma — volume'aları ve veriyi siler
 - Production `.env` dosyasındaki `DATABASE_URL`'yi değiştirme
 
 **Güvenli migration:** Sadece `prisma migrate deploy` kullan (sadece yeni migration'ları uygular, veriyi silmez).
@@ -134,9 +134,9 @@ Tüm endpointler `/api/` prefix ile başlar (`src/main.ts`'e göre).
 ## AI Servisi
 
 `src/ai/ai.service.ts` merkezi AI servisini içerir:
-- **Primary:** Gemini (`AI_API_URL` env'den alınır)
-- **Fallback:** Groq (`GROQ_API_KEY` ayarlanırsa otomatik devreye girer)
-- Settings tablosundan da key/URL okunabilir (admin panelinden override için)
+- **Primary:** Gemini (`ai_api_url` ayarından alınır)
+- **Fallback:** Groq (`groq_api_key` ayarlanırsa otomatik devreye girer)
+- **Yönetim:** API Anahtarları yalnızca Admin Panelindeki SEO & API sekmesinden yönetilir. `.env` üzerindeki anahtarlar artık kullanılmamaktadır.
 
 ## Prisma Şema Güncellemesi
 
@@ -157,13 +157,12 @@ Bot container'ı bu compose dosyasında **yok** — bot kendi dizininden yöneti
 
 ---
 
-## Son Geliştirmeler (24.03.2026)
+## Son Geliştirmeler (25.03.2026)
 
-### Kategori Yerelleştirme ve SEO
-- **Kategori Modeli:** `name_en`, `seo_title`, `seo_description`, `seo_keywords` alanları eklendi.
-- **Slug Desteği:** `CategoriesController`'da `:id` endpoint'i hem sayısal ID hem de string slug destekleyecek şekilde güncellendi (`idOrSlug`).
-- **Veritabanı Senkronizasyonu:** Docker üzerindeki MySQL şeması güncellendi ve Prisma Client yeniden oluşturuldu.
+### Görsel Pipeline & Persistence
+- **Volume Mapping:** Docker container içindeki `/app/public/uploads` dizini, Windows host üzerindeki fiziksel klasöre maplenerek kalıcılık sağlandı.
+- **Image Recovery:** `BotService` içine eksik görselleri otomatik tespit edip ajans kaynağından tekrar indiren "recovery" mantığı eklendi.
+- **DHA Scraper:** DHA'nın güncellenmiş site yapısına uygun CSS seçicileri ve meta-tag fallback'leri eklendi.
 
-### Dinamik Sayfalar & Footer Veritabanı Optimizasyonu
-- **Sistem Sayfaları:** İletişim, Hakkımızda vb. içerikler `Pages` modeline tam lokalizasyon desteği ile (`title_en`, `content_en`) entegre edildi. Ortak ID/Slug sorgulama mantığı kuruldu.
-- **Footer Veritabanı:** Footer bölüm (`FooterSection`) silme işlemleri sırasında yaşanabilecek Foreign Key ihlallerini önlemek adına `FooterLink` modeline Prisma şeması üzerinden `onDelete: Cascade` kuralı dahil edildi ve MySQL DB'ye (`db push`) aktarıldı.
+### API & UI Uyum
+- **Financial Data:** Döviz verileri için standart kodlama (USD, EUR, GOLD) sistemine geçildi ve mock veriler güncellendi.

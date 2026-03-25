@@ -9,45 +9,59 @@ export class AiService {
   constructor(private settingsService: SettingsService) { }
 
   private async getAiConfig() {
-    const dbApiKey = await this.settingsService.findOne('AI_API_KEY');
-    const dbApiUrl = await this.settingsService.findOne('AI_API_URL');
-    const groqKey = await this.settingsService.findOne('GROQ_API_KEY');
+    const dbApiKey = await this.settingsService.findOne('ai_api_key');
+    const dbApiUrl = await this.settingsService.findOne('ai_api_url');
+    const dbGroqKey = await this.settingsService.findOne('groq_api_key');
 
-    let apiKey = dbApiKey?.value || process.env.AI_API_KEY;
-    let apiUrl = dbApiUrl?.value || process.env.AI_API_URL || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-latest:generateContent';
+    // ONLY use DB settings as per user request (no .env fallback)
+    let apiKey = dbApiKey?.value;
+    let apiUrl = dbApiUrl?.value || 'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent';
+    const groqKey = dbGroqKey?.value;
 
-    if (apiUrl.includes('groq') && groqKey?.value) {
-        apiKey = groqKey.value;
+    if (apiUrl.includes('groq') && groqKey) {
+        apiKey = groqKey;
     }
 
-    return { apiKey, apiUrl };
+    return { apiKey, apiUrl, groqKey };
   }
 
-  private async callAi(prompt: string): Promise<string | null> {
-    let { apiKey, apiUrl } = await this.getAiConfig();
-    if (!apiKey) return null;
+  private async callAi(prompt: string): Promise<{ text: string; model: string } | null> {
+    const { apiKey: initialKey, apiUrl: initialUrl, groqKey } = await this.getAiConfig();
+    let apiKey = initialKey?.trim();
+    let apiUrl = initialUrl?.trim();
 
-    const groqKey = await this.settingsService.findOne('GROQ_API_KEY');
+    this.logger.log(`AI Config Loaded. Key: ${apiKey ? 'PRESENT' : 'MISSING'} | URL: ${apiUrl} | GroqKey: ${groqKey ? 'PRESENT' : 'MISSING'}`);
+
+    if (!apiKey) {
+      this.logger.error('No AI API Key found in DB');
+      return null;
+    }
+
     const groqUrl = 'https://api.groq.com/openai/v1/chat/completions';
-
     let attempts = 0;
     const maxAttempts = 3;
+    let lastUsedModel = apiUrl.includes('gemini') ? 'Gemini' : (apiUrl.includes('groq') ? 'Groq' : 'AI');
 
     while (attempts < maxAttempts) {
         const isGemini = apiUrl.includes('generativelanguage.googleapis.com');
         try {
             let response;
             if (isGemini) {
-                this.logger.log(`Attempting AI call with Gemini...`);
+                lastUsedModel = 'Gemini';
+                this.logger.log(`Attempting AI call with Gemini (${apiUrl.split('/').pop()?.split(':')[0]})...`);
                 response = await axios.post(`${apiUrl}?key=${apiKey}`, {
                     contents: [{ parts: [{ text: prompt }] }]
                 }, { timeout: 35000 });
                 
                 const aiText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-                await this.settingsService.update('AI_QUOTA_EXCEEDED', 'false');
-                return aiText;
+                if (!aiText) throw new Error('Empty response from AI');
+                
+                await this.settingsService.update('ai_quota_exceeded', 'false');
+                await this.settingsService.update('ai_active_platform', lastUsedModel);
+                return { text: aiText, model: lastUsedModel };
             } else {
-                this.logger.log(`Attempting AI call with OpenAI/Groq format...`);
+                lastUsedModel = apiUrl.includes('groq') ? 'Groq' : 'AI';
+                this.logger.log(`Attempting AI call with OpenAI/Groq format (${lastUsedModel})...`);
                 response = await axios.post(apiUrl, {
                     model: apiUrl.includes('groq') ? 'llama-3.3-70b-versatile' : 'gpt-4o-mini',
                     messages: [{ role: 'user', content: prompt }],
@@ -58,67 +72,83 @@ export class AiService {
                 });
                 
                 const aiText = response.data?.choices?.[0]?.message?.content;
-                await this.settingsService.update('AI_QUOTA_EXCEEDED', 'false');
-                return aiText;
+                if (!aiText) throw new Error('Empty response from AI');
+
+                await this.settingsService.update('ai_quota_exceeded', 'false');
+                await this.settingsService.update('ai_active_platform', lastUsedModel);
+                return { text: aiText, model: lastUsedModel };
             }
         } catch (error) {
             attempts++;
             const status = error.response?.status;
             
-            if (status === 429) {
-                this.logger.error(`AI Quota Exceeded (429) for ${apiUrl.includes('gemini') ? 'Gemini' : 'Current API'}`);
-                await this.settingsService.update('AI_QUOTA_EXCEEDED', 'true');
+            if (status === 403 || status === 404) {
+                this.logger.error(`AI Error (${status}): ${status === 403 ? 'Forbidden' : 'Not Found'}.`);
+                this.logger.error(`URL: ${apiUrl.substring(0, 50)}... | Key: ${apiKey ? apiKey.substring(0, 5) + '...' : 'MISSING'}`);
+            }
+
+            if (status === 429 || ((status === 403 || status === 404) && isGemini)) {
+                const failedModel = apiUrl.includes('gemini') ? 'Gemini' : (apiUrl.includes('groq') ? 'Groq' : 'AI');
+                this.logger.error(`AI Error (${status}) for ${failedModel}`);
+                
+                if (status === 429) {
+                    await this.settingsService.update('ai_failed_platform', failedModel);
+                    // Don't set quota_exceeded to true yet if we're falling back from Gemini to Groq
+                    if (failedModel !== 'Gemini' || !groqKey) {
+                        await this.settingsService.update('ai_quota_exceeded', 'true');
+                    }
+                }
 
                 // AUTOMATIC FALLBACK TO GROQ
-                if (apiUrl.includes('gemini') && groqKey?.value) {
-                    this.logger.warn(`Gemini Failed. Automatically falling back to Groq for this request.`);
-                    apiKey = groqKey.value;
+                if (apiUrl.includes('gemini') && groqKey) {
+                    this.logger.warn(`Gemini Problem. Automatically falling back to Groq for this request.`);
+                    apiKey = groqKey;
                     apiUrl = groqUrl;
                     attempts = 0; // Reset attempts for the new model
-                    continue;
+                    continue; // BACK TO TOP WITH GROQ
                 }
             }
 
+            // Standard Retries or Break
             if ((status === 429 || status === 503) && attempts < maxAttempts) {
                 const waitTime = status === 429 ? attempts * 3000 : 2000;
                 this.logger.warn(`AI API ${status} hit. Retrying in ${waitTime}ms...`);
                 await new Promise(resolve => setTimeout(resolve, waitTime));
             } else {
                 this.logger.error(`AI Error (${status || 'unknown'}): ${error.message}`);
-                break;
+                if (error.response?.data) {
+                    this.logger.error(`Response data: ${JSON.stringify(error.response.data)}`);
+                }
+                break; // FINAL FAIL
             }
         }
     }
+    
+    // If all attempts failed, it will fallback to original content
+    await this.settingsService.update('ai_active_platform', 'Orijinal Kaynak (Yapay Zeka Kapalı)');
     return null;
   }
 
-  async rewriteNews(title: string, summary: string, content: string): Promise<{ 
-    title: string; 
-    summary: string; 
-    content: string; 
-    title_en?: string;
-    summary_en?: string;
-    content_en?: string;
-    seo_title_en?: string;
-    seo_description_en?: string;
-    seo_keywords_en?: string;
-    model: string; 
-  } | null> {
-    const { apiUrl } = await this.getAiConfig();
+  async rewriteNews(title: string, summary: string, content: string): Promise<any> {
     const prompt = `
       Aşağıdaki haberi profesyonel bir haber editörü gibi, SEO dostu, özgün ve ilgi çekici bir şekilde yeniden yaz.
       Ayrıca haberi aynı formatta İNGİLİZCEYE çevir.
       Lütfen yanıtında SADECE şu formatı kullan (başka açıklama ekleme):
-      BAŞLIK: [Yeni Türkçe Başlık]
-      ÖZET: [Yeni Türkçe Özet]
-      İÇERİK: [Yeni Türkçe İçerik (HTML p ve h3 tagları ile)]
+      **Başlık:** [Yeni Türkçe Başlık]
+      **Özet:** [Yeni Türkçe Özet]
+      **Haber Metni:** [Yeni Türkçe İçerik (HTML p ve h3 tagları ile)]
       
-      BAŞLIK_EN: [Yeni İngilizce Başlık]
-      ÖZET_EN: [Yeni İngilizce Özet]
-      İÇERİK_EN: [Yeni İngilizce İçerik (HTML p ve h3 tagları ile)]
-      SEO_TITLE_EN: [İngilizce SEO Başlığı]
-      SEO_DESC_EN: [İngilizce SEO Açıklaması]
-      SEO_KEYS_EN: [İngilizce Anahtar Kelimeler]
+      **Title (EN):** [Yeni İngilizce Başlık]
+      **Summary (EN):** [Yeni İngilizce Özet]
+      **Content (EN):** [Yeni İngilizce İçerik (HTML p ve h3 tagları ile)]
+      
+      **SEO Title:** [Türkçe SEO Başlığı]
+      **SEO Description:** [Türkçe SEO Açıklaması]
+      **SEO Keywords:** [Türkçe Etiketler]
+      
+      **SEO Title (EN):** [İngilizce SEO Başlığı]
+      **SEO Description (EN):** [İngilizce SEO Açıklaması]
+      **SEO Keywords (EN):** [İngilizce Etiketler]
 
       ORİJİNAL HABER:
       BAŞLIK: ${title}
@@ -126,128 +156,126 @@ export class AiService {
       İÇERİK: ${content}
     `;
 
-    const aiText = await this.callAi(prompt);
-    if (!aiText) return null;
+    const result = await this.callAi(prompt);
+    if (!result || !result.text) return null;
+    
+    const parsed = this.parseAiResponse(result.text, result.model);
+    if (!parsed) return null;
 
-    const titleMatch = aiText.match(/BAŞLIK:\s*(.*)/i);
-    const summaryMatch = aiText.match(/ÖZET:\s*([\s\S]*?)(?=İÇERİK:|$)/i);
-    const contentMatch = aiText.match(/İÇERİK:\s*([\s\S]*?)(?=BAŞLIK_EN:|$)/i);
-    const titleEnMatch = aiText.match(/BAŞLIK_EN:\s*(.*)/i);
-    const summaryEnMatch = aiText.match(/ÖZET_EN:\s*([\s\S]*?)(?=İÇERİK_EN:|$)/i);
-    const contentEnMatch = aiText.match(/İÇERİK_EN:\s*([\s\S]*?)(?=SEO_TITLE_EN:|$)/i);
-    const stEnMatch = aiText.match(/SEO_TITLE_EN:\s*(.*)/i);
-    const sdEnMatch = aiText.match(/SEO_DESC_EN:\s*(.*)/i);
-    const skEnMatch = aiText.match(/SEO_KEYS_EN:\s*(.*)/i);
-
-    const cleanHtml = (html: string | undefined): string => {
-        if (!html) return '';
-        return html.replace(/^```html\n?/, '').replace(/\n?```$/, '').trim();
-    }
-
-    const result = {
-      title: titleMatch?.[1]?.trim() || title,
-      summary: summaryMatch?.[1]?.trim() || summary,
-      content: cleanHtml(contentMatch?.[1]),
-      title_en: titleEnMatch?.[1]?.trim(),
-      summary_en: summaryEnMatch?.[1]?.trim(),
-      content_en: cleanHtml(contentEnMatch?.[1]),
-      seo_title_en: stEnMatch?.[1]?.trim(),
-      seo_description_en: sdEnMatch?.[1]?.trim(),
-      seo_keywords_en: skEnMatch?.[1]?.trim(),
-      model: apiUrl.includes('openai') ? 'GPT' : (apiUrl.includes('groq') ? 'Groq' : 'Gemini')
+    this.logger.log(`AI Successfully rewrote news: ${parsed.title.substring(0, 50)}... (${result.model})`);
+    
+    return {
+        ...parsed,
+        title: parsed.title || title,
+        summary: parsed.summary || summary,
+        content: parsed.content || content,
+        model: result.model
     };
-
-    this.logger.log(`AI Successfully rewrote news: ${result.title.substring(0, 50)}...`);
-    return result;
   }
 
-  async rewriteVisualContent(title: string, description: string): Promise<{ 
-    title: string; 
-    description: string; 
-    seo_title: string; 
-    seo_description: string; 
-    seo_keywords: string;
-    title_en?: string;
-    description_en?: string;
-    seo_title_en?: string;
-    seo_description_en?: string;
-    seo_keywords_en?: string;
-    model: string;
-  } | null> {
-    const { apiUrl } = await this.getAiConfig();
+  async rewriteVisualContent(title: string, description: string): Promise<any> {
     const prompt = `
       Aşağıdaki video veya galeri içeriğini profesyonel bir editör gibi, SEO dostu ve ilgi çekici bir şekilde yeniden yaz.
       Ayrıca içeriği aynı formatta İNGİLİZCEYE çevir.
       Lütfen yanıtında SADECE şu formatı kullan (başka açıklama ekleme):
-      BAŞLIK: [Yeni Türkçe Başlık]
-      AÇIKLAMA: [Yeni Türkçe Açıklama]
-      SEO_BASLIK: [Türkçe SEO Başlığı]
-      SEO_ACIKLAMA: [Türkçe SEO Açıklaması]
-      ANAHTAR_KELIMELER: [Türkçe Etiketler]
+      **Başlık:** [Yeni Türkçe Başlık]
+      **Açıklama:** [Yeni Türkçe Açıklama]
+      **SEO Title:** [Türkçe SEO Başlığı]
+      **SEO Description:** [Türkçe SEO Açıklaması]
+      **SEO Keywords:** [Türkçe Etiketler]
       
-      BAŞLIK_EN: [Yeni İngilizce Başlık]
-      AÇIKLAMA_EN: [Yeni İngilizce Açıklama]
-      SEO_BASLIK_EN: [İngilizce SEO Başlığı]
-      SEO_ACIKLAMA_EN: [İngilizce SEO Açıklaması]
-      ANAHTAR_KELIMELER_EN: [İngilizce Etiketler]
+      **Title (EN):** [Yeni İngilizce Başlık]
+      **Description (EN):** [Yeni İngilizce Açıklama]
+      **SEO Title (EN):** [İngilizce SEO Başlığı]
+      **SEO Description (EN):** [İngilizce SEO Açıklaması]
+      **SEO Keywords (EN):** [İngilizce Etiketler]
 
       ORİJİNAL İÇERİK:
       BAŞLIK: ${title}
       AÇIKLAMA: ${description || 'Açıklama yok'}
     `;
 
-    const aiText = await this.callAi(prompt);
+    const result = await this.callAi(prompt);
+    if (!result || !result.text) return null;
+
+    const parsed = this.parseAiResponse(result.text, result.model);
+    if (!parsed) return null;
+
+    this.logger.log(`AI Successfully rewrote visual content: ${parsed.title.substring(0, 50)}... (${result.model})`);
+    
+    return {
+        ...parsed,
+        title: parsed.title || title,
+        description: parsed.description || description,
+        model: result.model
+    };
+  }
+
+  private parseAiResponse(aiText: string, modelName: string): any {
     if (!aiText) return null;
 
-    const titleMatch = aiText.match(/BAŞLIK:\s*(.*)/i);
-    const descMatch = aiText.match(/AÇIKLAMA:\s*([\s\S]*?)(?=SEO_BASLIK:|$)/i);
-    const seoTitleMatch = aiText.match(/SEO_BASLIK:\s*(.*)/i);
-    const seoDescMatch = aiText.match(/SEO_ACIKLAMA:\s*(.*)/i);
-    const keywordsMatch = aiText.match(/ANAHTAR_KELIMELER:\s*([\s\S]*?)(?=BAŞLIK_EN:|$)/i);
-    const titleEnMatch = aiText.match(/BAŞLIK_EN:\s*(.*)/i);
-    const descEnMatch = aiText.match(/AÇIKLAMA_EN:\s*([\s\S]*?)(?=SEO_BASLIK_EN:|$)/i);
-    const seoTitleEnMatch = aiText.match(/SEO_BASLIK_EN:\s*(.*)/i);
-    const seoDescEnMatch = aiText.match(/SEO_ACIKLAMA_EN:\s*(.*)/i);
-    const keywordsEnMatch = aiText.match(/ANAHTAR_KELIMELER_EN:\s*([\s\S]*)/i);
-
-    const result = {
-      title: titleMatch?.[1]?.trim() || title,
-      description: descMatch?.[1]?.trim() || (description || ''),
-      seo_title: seoTitleMatch?.[1]?.trim() || title,
-      seo_description: seoDescMatch?.[1]?.trim() || '',
-      seo_keywords: keywordsMatch?.[1]?.trim() || '',
-      title_en: titleEnMatch?.[1]?.trim(),
-      description_en: descEnMatch?.[1]?.trim(),
-      seo_title_en: seoTitleEnMatch?.[1]?.trim(),
-      seo_description_en: seoDescEnMatch?.[1]?.trim(),
-      seo_keywords_en: keywordsEnMatch?.[1]?.trim(),
-      model: apiUrl.includes('openai') ? 'GPT' : (apiUrl.includes('groq') ? 'Groq' : 'Gemini')
+    const cleanHtml = (html: string | undefined): string | undefined => {
+      if (!html) return undefined;
+      return html.replace(/^```html\n?/, '').replace(/\n?```$/, '').trim();
     };
 
-    this.logger.log(`AI Successfully rewrote visual content: ${result.title.substring(0, 50)}...`);
-    return result;
+    const titleMatch = aiText.match(/\*\*Başlık:\*\*\s*(.*)/i);
+    const summaryMatch = aiText.match(/\*\*Özet:\*\*\s*([\s\S]*?)(?=\*\*|$)/i);
+    const contentMatch = aiText.match(/\*\*Haber Metni:\*\*\s*([\s\S]*?)(?=\*\*|$)/i);
+    const descriptionMatch = aiText.match(/\*\*Açıklama:\*\*\s*([\s\S]*?)(?=\*\*|$)/i);
+    
+    const titleEnMatch = aiText.match(/\*\*Title \(EN\):\*\*\s*(.*)/i);
+    const summaryEnMatch = aiText.match(/\*\*Summary \(EN\):\*\*\s*([\s\S]*?)(?=\*\*|$)/i);
+    const contentEnMatch = aiText.match(/\*\*Content \(EN\):\*\*\s*([\s\S]*?)(?=\*\*|$)/i);
+    const descriptionEnMatch = aiText.match(/\*\*Description \(EN\):\*\*\s*([\s\S]*?)(?=\*\*|$)/i);
+
+    const stMatch = aiText.match(/\*\*SEO Title:\*\*\s*(.*)/i);
+    const sdMatch = aiText.match(/\*\*SEO Description:\*\*\s*(.*)/i);
+    const skMatch = aiText.match(/\*\*SEO Keywords:\*\*\s*(.*)/i);
+    
+    const stEnMatch = aiText.match(/\*\*SEO Title \(EN\):\*\*\s*(.*)/i);
+    const sdEnMatch = aiText.match(/\*\*SEO Description \(EN\):\*\*\s*(.*)/i);
+    const skEnMatch = aiText.match(/\*\*SEO Keywords \(EN\):\*\*\s*(.*)/i);
+
+    if (!titleMatch && !titleEnMatch) return null;
+
+    return {
+      title: titleMatch?.[1]?.trim() || titleEnMatch?.[1]?.trim() || '',
+      summary: summaryMatch?.[1]?.trim(),
+      content: cleanHtml(contentMatch?.[1]),
+      description: descriptionMatch?.[1]?.trim(),
+      title_en: titleEnMatch?.[1]?.trim(),
+      summary_en: summaryEnMatch?.[1]?.trim(),
+      content_en: cleanHtml(contentEnMatch?.[1]),
+      description_en: descriptionEnMatch?.[1]?.trim(),
+      seo_title: stMatch?.[1]?.trim(),
+      seo_description: sdMatch?.[1]?.trim(),
+      seo_keywords: skMatch?.[1]?.trim(),
+      seo_title_en: stEnMatch?.[1]?.trim(),
+      seo_description_en: sdEnMatch?.[1]?.trim(),
+      seo_keywords_en: skEnMatch?.[1]?.trim(),
+      model: modelName
+    };
   }
 
   async generateSocialPosts(title: string, summary: string): Promise<{ x: string; instagram: string; facebook: string } | null> {
-    this.logger.log(`AI Social Media post generation for: ${title.substring(0, 50)}...`);
-
     const prompt = `
     Aşağıdaki haber için X (Twitter), Instagram ve Facebook platformlarına uygun, etkileşim artırıcı sosyal medya paylaşımları hazırla.
     Lütfen yanıtında SADECE şu formatı kullan (başka açıklama ekleme):
-    X: [Tweet metni, gerekirse 2-3 tweetlik flood yap, en sonuna hashtag ekle]
-    INSTAGRAM: [Emojili, ilgi çekici açıklama metni ve hashtagler]
-    FACEBOOK: [Haberin özeti ve okumaya teşvik eden profesyonel bir metin]
+    X: [Tweet metni]
+    INSTAGRAM: [Instagram metni]
+    FACEBOOK: [Facebook metni]
 
     HABER BAŞLIĞI: ${title}
     HABER ÖZETİ: ${summary}
     `;
 
-    const aiText = await this.callAi(prompt);
-    if (!aiText) return null;
+    const result = await this.callAi(prompt);
+    if (!result || !result.text) return null;
 
-    const xMatch = aiText.match(/X:\s*([\s\S]*?)(?=INSTAGRAM:|$)/i);
-    const igMatch = aiText.match(/INSTAGRAM:\s*([\s\S]*?)(?=FACEBOOK:|$)/i);
-    const fbMatch = aiText.match(/FACEBOOK:\s*([\s\S]*)/i);
+    const xMatch = result.text.match(/X:\s*([\s\S]*?)(?=INSTAGRAM:|$)/i);
+    const igMatch = result.text.match(/INSTAGRAM:\s*([\s\S]*?)(?=FACEBOOK:|$)/i);
+    const fbMatch = result.text.match(/FACEBOOK:\s*([\s\S]*)/i);
 
     return {
       x: xMatch?.[1]?.trim() || '',
@@ -261,15 +289,11 @@ export class AiService {
     try {
       const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLanguage}&dt=t&q=${encodeURIComponent(text)}`;
       const response = await axios.get(url);
-      
       if (response.data && response.data[0]) {
-        const result = response.data[0].map((part: any) => part[0]).join('');
-        this.logger.debug(`Free translation (${targetLanguage}) success: ${text.substring(0, 30)}... -> ${result.substring(0, 30)}...`);
-        return result;
+        return response.data[0].map((part: any) => part[0]).join('');
       }
       return text;
     } catch (error) {
-      this.logger.error(`Error in free translation: ${error.message}`);
       return text;
     }
   }
@@ -277,18 +301,12 @@ export class AiService {
   async translateHtmlFree(html: string, targetLanguage: string = 'en'): Promise<string> {
     if (!html) return '';
     try {
-      // Basic approach: translate each sentence while trying to keep tags. 
-      // For a more robust version, we would parse with cheerio, but for now, simple translation might suffice or we translate paragraphs.
       const paragraphs = html.split(/<\/p>/i);
       const translatedParagraphs = await Promise.all(paragraphs.map(async p => {
           if (!p.trim()) return '';
           const cleanText = p.replace(/<[^>]*>/g, '').trim();
           if (!cleanText) return p + '</p>';
           const translatedText = await this.translateFree(cleanText, targetLanguage);
-          
-          // If cleanText matches exactly, we can try to preserve outer tags,
-          // but if it has inner tags, replace will fail.
-          // Safest to just return the translated text wrapped in <p>
           return `<p>${translatedText}</p>`;
       }));
       return translatedParagraphs.join('');

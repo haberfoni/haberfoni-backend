@@ -120,7 +120,7 @@ async function scrapeIHAHTML(url: string, targetCategory: string, bot: BotServic
         $(selector).each((i, elem) => {
             const href = $(elem).attr('href');
             if (href) {
-                const isMatch = (href.includes('/video-') || href.includes('/foto-galeri-') || href.includes('/haber-') || href.match(/-[\d]+\/?$/));
+                const isMatch = (href.includes('/video-') || href.includes('/foto-galeri') || href.includes('/fotograf-galeri') || href.includes('/haber-') || href.match(/-[\d]+\/?$/));
                 if (isMatch) {
                     const fullUrl = href.startsWith('http') ? href : `https://www.iha.com.tr${href}`;
                     articleLinks.add(fullUrl);
@@ -259,12 +259,12 @@ async function scrapeIHAGallery(url: string, targetCategory: string) {
         const thumbnail = $('meta[property="og:image"]').attr('content') || '';
 
         const images: any[] = [];
-        $('.gallery-img img, .photo-gallery img, article img').each((i, el) => {
+        $('.gallery-img img, .photo-gallery img, article img, .gallery-item img, .swiper-slide img').each((i, el) => {
             const src = $(el).attr('data-src') || $(el).attr('src');
             if (src && !isBlockedImage(src)) {
                 images.push({
                     url: src.startsWith('http') ? src : 'https://www.iha.com.tr' + src,
-                    caption: $(el).attr('alt') || ''
+                    caption: $(el).attr('alt') || $(el).attr('title') || ''
                 });
             }
         });
@@ -317,13 +317,24 @@ async function scrapeIHAArticle(url: string, targetCategory: string) {
         let imageUrl: string | null = null;
         const candidates = [
             $('meta[property="og:image"]').attr('content'),
+            $('meta[name="twitter:image"]').attr('content'),
+            $('.news-detail-image img').attr('data-src'),
+            $('.news-detail-image img').attr('src'),
+            $('.news-detail__content img').first().attr('data-src'),
+            $('.news-detail__content img').first().attr('src'),
+            $('.news-content img').first().attr('data-src'),
+            $('.news-content img').first().attr('src'),
+            $('div.gallery-img img').first().attr('data-src'),
             $('div.gallery-img img').first().attr('src'),
+            $('figure img').first().attr('data-src'),
             $('figure img').first().attr('src'),
+            $('.article-img img').first().attr('data-src'),
             $('.article-img img').first().attr('src'),
+            $('article img').first().attr('data-src'),
             $('article img').first().attr('src'),
         ];
         for (const c of candidates) {
-            if (c && !isBlockedImage(c)) {
+            if (c && !isBlockedImage(c) && !c.includes('base64')) {
                 imageUrl = c.startsWith('http') ? c : 'https://www.iha.com.tr' + c;
                 break;
             }

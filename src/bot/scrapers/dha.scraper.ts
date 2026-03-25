@@ -60,7 +60,7 @@ export async function scrapeDHA(bot: BotService) {
 
                         // Check if link is a valid news/video/gallery subpage
                         const isVideo = fullLink.includes('/video/') || fullLink.includes('-video-');
-                        const isGallery = fullLink.includes('/foto-galeri/') || fullLink.includes('-galeri-');
+                        const isGallery = fullLink.includes('/foto-galeri/') || fullLink.includes('/fotograf-galeri/') || fullLink.includes('-galeri-') || fullLink.includes('-galerisi-');
                         const hasId = /\d+(\/)?$/.test(fullLink);
 
                         // Avoid scraping links that clearly belong to other segments in the footer/header
@@ -407,6 +407,34 @@ async function scrapeDHAArticle(item: any, targetCategory: string) {
             timeout: 30000
         });
         const $detail = cheerio.load(detailResponse.data);
+
+        // Extract Title if missing
+        if (!item.title) {
+            item.title = $detail('h1').first().text().trim() || $detail('title').text().trim();
+        }
+
+        // Extract Image if missing or was placeholder
+        if (!item.image_url || isBlockedImage(item.image_url)) {
+             const candidates = [
+                $detail('meta[property="og:image"]').attr('content'),
+                $detail('meta[name="twitter:image"]').attr('content'),
+                $detail('.news-detail__image img').attr('data-src'),
+                $detail('.news-detail__image img').attr('src'),
+                $detail('.news-detail-image img').attr('data-src'),
+                $detail('.news-detail-image img').attr('src'),
+                $detail('.nd-article-content img').first().attr('data-src'),
+                $detail('.nd-article-content img').first().attr('src'),
+                $detail('article img').first().attr('data-src'),
+                $detail('article img').first().attr('src'),
+                $detail('.content-text img').first().attr('src'),
+            ];
+            for (const c of candidates) {
+                if (c && !isBlockedImage(c) && !c.includes('base64')) {
+                    item.image_url = c.startsWith('http') ? c : `https://www.dha.com.tr${c}`;
+                    break;
+                }
+            }
+        }
 
         // Extract summary (Spot) first
         let summary = $detail('h2').first().text().trim() ||

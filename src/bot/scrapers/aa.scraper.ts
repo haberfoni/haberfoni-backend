@@ -127,7 +127,7 @@ async function scrapeAAHTML(url: string, targetCategory: string, bot: BotService
 
         for (const articleUrl of linksArray) {
             try {
-                const isGallery = articleUrl.includes('/fotoraf-galerisi/') || /\/(fotoraf|info)\//.test(articleUrl);
+                const isGallery = articleUrl.includes('/fotograf-galerisi/') || articleUrl.includes('/fotoraf-galerisi/') || articleUrl.includes('/foto-galeri/') || /\/(fotoraf|fotograf|info|galeri)\//.test(articleUrl);
                 const isVideo = articleUrl.includes('/video-galerisi/') || /\/(vgc|video)\//.test(articleUrl);
 
                 let success = false;
@@ -290,8 +290,25 @@ async function scrapeAAArticle(url: string, targetCategory: string) {
 
         const summaryRaw = $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || '';
         const summary = summaryRaw.replace(/\s+/g, ' ').trim();
-        const imageUrlRaw = $('meta[property="og:image"]').attr('content') || $('article img').first().attr('src') || null;
-        const imageUrl = isBlockedImage(imageUrlRaw) ? null : imageUrlRaw;
+        
+        let imageUrl: string | null = null;
+        const candidates = [
+            $('meta[property="og:image"]').attr('content'),
+            $('meta[name="twitter:image"]').attr('content'),
+            $('.detay-icerik img').first().attr('data-src'),
+            $('.detay-icerik img').first().attr('src'),
+            $('article img').first().attr('data-src'),
+            $('article img').first().attr('src'),
+            $('.news-detail-image img').attr('data-src'),
+            $('.news-detail-image img').attr('src'),
+        ];
+
+        for (const c of candidates) {
+            if (c && !isBlockedImage(c) && !c.includes('base64')) {
+                imageUrl = c.startsWith('http') ? c : (c.startsWith('/') ? `https://www.aa.com.tr${c}` : c);
+                break;
+            }
+        }
 
         let contentEl = $('.detay-icerik');
         if (contentEl.length === 0) contentEl = $('article');

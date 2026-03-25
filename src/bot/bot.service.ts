@@ -384,7 +384,8 @@ export class BotService implements OnModuleInit {
             return `/uploads/${filename}`;
         } catch (error) {
             this.logger.warn(`Failed to download image from ${url}: ${error.message}`);
-            return url; // Fallback to original URL
+            // If it's the second attempt or already failed, return original URL or null
+            return url.startsWith('http') ? url : null;
         }
     }
 
@@ -481,9 +482,9 @@ export class BotService implements OnModuleInit {
                 await new Promise(resolve => setTimeout(resolve, 4500));
             }
 
-            // High Priority: Free Translation (Overrides AI English if both active)
-            if (settings && settings.use_free_translate) {
-                // Basic translation without AI (or overriding AI's English)
+            // Priority 2: Use Free Translation ONLY if we don't have English yet
+            if (settings && settings.use_free_translate && !(data as any).title_en) {
+                this.logger.log(`Starting Free Translation for video: ${finalTitle}`);
                 const [titleEn, descEn] = await Promise.all([
                     this.aiService.translateFree(finalTitle, 'en'),
                     this.aiService.translateFree(finalDescription || '', 'en')
@@ -492,7 +493,7 @@ export class BotService implements OnModuleInit {
                 (data as any).description_en = descEn;
                 (data as any).seo_title_en = titleEn;
                 (data as any).seo_description_en = descEn ? descEn.substring(0, 160) : '';
-                this.logger.log(`Free Translation applied (Priority) for video: ${finalTitle}`);
+                this.logger.log(`Free Translation applied for video: ${finalTitle}`);
             }
 
             // 3.6 Download Thumbnail
@@ -623,9 +624,9 @@ export class BotService implements OnModuleInit {
                 await new Promise(resolve => setTimeout(resolve, 4500));
             }
 
-            // High Priority: Free Translation (Overrides AI English if both active)
-            if (settings && settings.use_free_translate) {
-                // Basic translation without AI
+            // Priority 2: Use Free Translation ONLY if we don't have English yet
+            if (settings && settings.use_free_translate && !(data as any).title_en) {
+                this.logger.log(`Starting Free Translation for gallery: ${finalTitle}`);
                 const [titleEn, descEn] = await Promise.all([
                     this.aiService.translateFree(finalTitle, 'en'),
                     this.aiService.translateFree(finalDescription || '', 'en')
@@ -634,7 +635,7 @@ export class BotService implements OnModuleInit {
                 (data as any).description_en = descEn;
                 (data as any).seo_title_en = titleEn;
                 (data as any).seo_description_en = descEn ? descEn.substring(0, 160) : '';
-                this.logger.log(`Free Translation applied (Priority) for gallery: ${finalTitle}`);
+                this.logger.log(`Free Translation applied for gallery: ${finalTitle}`);
             }
 
             const createdGallery = await this.prisma.photoGallery.create({
@@ -727,6 +728,14 @@ export class BotService implements OnModuleInit {
                         where: { id: existing.id },
                         data: { image_url: localImageUrl }
                     });
+                } else if (existing.image_url && existing.image_url.startsWith('/uploads/')) {
+                    // VERIFY IF FILE EXISTS ON DISK
+                    const filename = path.basename(existing.image_url);
+                    const filepath = path.join(this.UPLOAD_DIR, filename);
+                    if (!fs.existsSync(filepath) && newsItem.image_url && newsItem.image_url.startsWith('http')) {
+                        this.logger.log(`File missing on disk for ${existing.id}. Re-downloading...`);
+                        await this.downloadImage(newsItem.image_url, newsItem.source, 'recovery');
+                    }
                 }
                 
                 this.logger.verbose(`Skipping existing news (Content protected): ${newsItem.title.substring(0, 50)}...`);
