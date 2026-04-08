@@ -227,3 +227,8 @@ Projenin yerel geliştirme ortamında yaşanan bağlantı ve görsel sunum sorun
 ### 2. Görsel Sunum Mantığı
 - **CDN Ayrıştırma:** Görsellerin `/api/uploads` yerine doğrudan `/uploads` üzerinden sunulması sağlandı.
 - **Path Doğrulama:** Veritabanındaki `/uploads/news/` yollarının `public/uploads/news/` fiziksel diziniyle tam uyumlu olduğu ve backend üzerinden başarıyla sunulduğu teyit edildi.
+
+### 3. Open Graph (og:image) Düzeltmesi (Share Proxy)
+- **Absolute URL Zorunluluğu:** Facebook Share Proxy endpointi (`share.controller.ts`) yeniden yapılandırıldı.
+- Eskiden relative path (örn: `/uploads/news/resim.jpg`) olarak sunulan `og:image` linkleri nedeniyle Facebook resimleri çekemiyordu.
+- Artık her bir görsel URL'sinin başına dinamik olarak host (örn: `https://api-haberfoni.kaprofis.com`) eklenerek **tam ve çekilebilir (absolute) resim adresleri** oluşturuldu. Bu sayede Facebook "Bağlantı Kartı" gösterimleri düzeldi.
