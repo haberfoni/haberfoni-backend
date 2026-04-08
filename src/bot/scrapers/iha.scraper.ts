@@ -4,6 +4,7 @@ import * as cheerio from 'cheerio';
 import axios from 'axios';
 import * as Parser from 'rss-parser';
 import * as https from 'https';
+import * as iconv from 'iconv-lite';
 
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
@@ -105,9 +106,21 @@ async function scrapeIHAHTML(url: string, targetCategory: string, bot: BotServic
         const response = await axios.get(url, {
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36' },
             timeout: 30000,
-            httpsAgent // Bypass SSL cert errors
+            httpsAgent, // Bypass SSL cert errors
+            responseType: 'arraybuffer'
         });
-        const $ = cheerio.load(response.data);
+        
+        // Smart Encoding Detection
+        const contentType = response.headers['content-type']?.toLowerCase() || '';
+        let decodedBody: string;
+        
+        if (contentType.includes('windows-1254') || contentType.includes('iso-8859-9')) {
+            decodedBody = iconv.decode(Buffer.from(response.data), 'windows-1254');
+        } else {
+            decodedBody = Buffer.from(response.data).toString('utf8');
+        }
+        
+        const $ = cheerio.load(decodedBody);
         const articleLinks = new Set<string>();
 
         // Target specific category widgets to avoid scraping sidebar/breaking news
@@ -180,8 +193,24 @@ async function scrapeIHAHTML(url: string, targetCategory: string, bot: BotServic
 
 async function scrapeIHAVideo(url: string, targetCategory: string) {
     try {
-        const response = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 30000, httpsAgent });
-        const $ = cheerio.load(response.data);
+        const response = await axios.get(url, { 
+            headers: { 'User-Agent': 'Mozilla/5.0' }, 
+            timeout: 30000, 
+            httpsAgent,
+            responseType: 'arraybuffer'
+        });
+
+        // Smart Encoding Detection
+        const contentType = response.headers['content-type']?.toLowerCase() || '';
+        let decodedBody: string;
+        
+        if (contentType.includes('windows-1254') || contentType.includes('iso-8859-9')) {
+            decodedBody = iconv.decode(Buffer.from(response.data), 'windows-1254');
+        } else {
+            decodedBody = Buffer.from(response.data).toString('utf8');
+        }
+        
+        const $ = cheerio.load(decodedBody);
 
         const title = $('h1').first().text().trim();
         let description = $('meta[name="description"]').attr('content') ||
@@ -208,7 +237,7 @@ async function scrapeIHAVideo(url: string, targetCategory: string) {
         }
 
         if (!videoUrl) {
-            const html = response.data;
+            const html = decodedBody;
             const mp4Match = html.match(/mp4HD:\s*"([^"]+)"/);
             if (mp4Match) {
                 videoUrl = mp4Match[1];
@@ -246,8 +275,24 @@ async function scrapeIHAVideo(url: string, targetCategory: string) {
 
 async function scrapeIHAGallery(url: string, targetCategory: string) {
     try {
-        const response = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 30000, httpsAgent });
-        const $ = cheerio.load(response.data);
+        const response = await axios.get(url, { 
+            headers: { 'User-Agent': 'Mozilla/5.0' }, 
+            timeout: 30000, 
+            httpsAgent,
+            responseType: 'arraybuffer'
+        });
+        
+        // Smart Encoding Detection
+        const contentType = response.headers['content-type']?.toLowerCase() || '';
+        let decodedBody: string;
+        
+        if (contentType.includes('windows-1254') || contentType.includes('iso-8859-9')) {
+            decodedBody = iconv.decode(Buffer.from(response.data), 'windows-1254');
+        } else {
+            decodedBody = Buffer.from(response.data).toString('utf8');
+        }
+        
+        const $ = cheerio.load(decodedBody);
 
         const title = $('h1').first().text().trim();
         let description = $('meta[name="description"]').attr('content') ||
@@ -296,9 +341,21 @@ async function scrapeIHAArticle(url: string, targetCategory: string) {
         const response = await axios.get(url, {
             headers: { 'User-Agent': 'Mozilla/5.0' },
             timeout: 30000,
-            httpsAgent
+            httpsAgent,
+            responseType: 'arraybuffer'
         });
-        const $ = cheerio.load(response.data);
+        
+        // Smart Encoding Detection
+        const contentType = response.headers['content-type']?.toLowerCase() || '';
+        let decodedBody: string;
+        
+        if (contentType.includes('windows-1254') || contentType.includes('iso-8859-9')) {
+            decodedBody = iconv.decode(Buffer.from(response.data), 'windows-1254');
+        } else {
+            decodedBody = Buffer.from(response.data).toString('utf8');
+        }
+        
+        const $ = cheerio.load(decodedBody);
 
         const title = $('h1').first().text().trim() || $('title').text().trim();
         if (!title) return null;
@@ -324,6 +381,8 @@ async function scrapeIHAArticle(url: string, targetCategory: string) {
             $('meta[name="twitter:image"]').attr('content'),
             $('.news-detail-image img').attr('data-src'),
             $('.news-detail-image img').attr('src'),
+            $('.news-detail-image-box img').attr('data-src'), // Yeni variant
+            $('.news-detail-image-box img').attr('src'), // Yeni variant
             $('.news-detail__content img').first().attr('data-src'),
             $('.news-detail__content img').first().attr('src'),
             $('.news-content img').first().attr('data-src'),

@@ -371,12 +371,35 @@ export class BotService implements OnModuleInit {
     }
 
     private async downloadImage(url: string | null | undefined, source: string, type: string): Promise<string | null> {
-        if (!url || !url.startsWith('http')) return url || null;
+        if (!url) return null;
+
+        // Fix protocol-relative URLs
+        let targetUrl = url;
+        if (targetUrl.startsWith('//')) {
+            targetUrl = 'https:' + targetUrl;
+        }
+
+        // If it's not a remote URL (already an upload path or similar), return it as is
+        if (!targetUrl.startsWith('http')) {
+            return targetUrl;
+        }
 
         try {
-            const hash = crypto.createHash('md5').update(url).digest('hex');
-            const urlPath = new URL(url).pathname;
-            const ext = path.extname(urlPath) || '.jpg';
+            const hash = crypto.createHash('md5').update(targetUrl).digest('hex');
+            
+            // Extract extension safely
+            let ext = '.jpg';
+            try {
+                const urlParsed = new URL(targetUrl);
+                const urlPath = urlParsed.pathname;
+                ext = path.extname(urlPath) || '.jpg';
+                // Remove potential junk after extension if any
+                ext = ext.split('?')[0].split('#')[0];
+                if (ext.length > 5) ext = '.jpg'; // Safety check
+            } catch (e) {
+                // Keep .jpg as fallback
+            }
+
             const filename = `${source.toLowerCase()}_${type}_${hash}${ext}`;
             const subDir = type.includes('gallery') ? (type === 'gallery_item' ? 'gallery_item' : 'gallery') : 
                            type === 'news' ? 'news' : 
@@ -392,22 +415,22 @@ export class BotService implements OnModuleInit {
             }
 
             // Download
-            const response = await axios.get(url, {
+            const response = await axios.get(targetUrl, {
                 responseType: 'arraybuffer',
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                    'Referer': new URL(url).origin
+                    'Referer': new URL(targetUrl).origin
                 },
                 timeout: 10000
             });
 
             fs.writeFileSync(filepath, response.data);
-            this.logger.debug(`Downloaded image: ${filename} to ${subDir || 'root'} from ${url}`);
+            this.logger.debug(`Downloaded image: ${filename} to ${subDir || 'root'} from ${targetUrl}`);
             return publicPath;
         } catch (error) {
-            this.logger.warn(`Failed to download image from ${url}: ${error.message}`);
-            // If it's the second attempt or already failed, return original URL or null
-            return url.startsWith('http') ? url : null;
+            this.logger.warn(`Failed to download image from ${targetUrl}: ${error.message}`);
+            // Fallback to original URL if it's absolute, otherwise null
+            return targetUrl.startsWith('http') ? targetUrl : null;
         }
     }
 
