@@ -19,4 +19,4 @@ RUN npm run build
 EXPOSE 3000
 
 # Use db push instead of migrate deploy because we don't have migration history yet
-CMD ["sh", "-c", "npx prisma db push && node dist/src/main.js"]
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node dist/src/main.js"]

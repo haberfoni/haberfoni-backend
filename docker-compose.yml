@@ -11,7 +11,7 @@ services:
       MYSQL_USER: ${MYSQL_USER:-haberfoni_user}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-Haberfoni_Secur3!DB}
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       - db_data:/var/lib/mysql
     networks:
@@ -43,7 +43,8 @@ services:
 
 networks:
   app_network:
-    driver: bridge
+    name: haberfoni_network
+    external: true
 
 volumes:
   db_data:

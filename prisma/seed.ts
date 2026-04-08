@@ -162,15 +162,17 @@ async function main() {
             }
         });
 
-        // Add to headlines if it's a slider
-        if (item.is_slider) {
-            await prisma.headline.create({
-                data: { news_id: newsItem.id, type: 1, order_index: Math.floor(Math.random() * 10) }
-            });
-            await prisma.headline.create({
-                data: { news_id: newsItem.id, type: 2, order_index: Math.floor(Math.random() * 10) }
-            });
-        }
+        /* 
+         // Headlines are cleared for dynamic flow
+         if (item.is_slider) {
+             await prisma.headline.create({
+                 data: { news_id: newsItem.id, type: 1, order_index: Math.floor(Math.random() * 10) }
+             });
+             await prisma.headline.create({
+                 data: { news_id: newsItem.id, type: 2, order_index: Math.floor(Math.random() * 10) }
+             });
+         }
+         */
     }
     console.log('News and Headlines seeded.');
 

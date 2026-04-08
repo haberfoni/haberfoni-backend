@@ -24,7 +24,7 @@ model News {
   published_at       DateTime?
   is_active          Boolean    @default(true)
   views              Int        @default(0)
-  is_slider          Boolean    @default(false)
+  is_manset_2        Boolean    @default(false)
   media_type         String?    @default("image") @db.VarChar(50)
   video_url          String?    @db.Text
   updater_id         String?    @db.VarChar(100)
