@@ -1,77 +1,53 @@
-# haberfoni-backend
+# Haberfoni Proje Tanımı ve Teknik Klavuz
 
-## Genel Bilgi
-
-**NestJS** tabanlı REST API. **Prisma ORM** ile **MySQL 8.0** kullanır.  
-**Docker container** içinde çalışır (port **3000**).  
-TypeScript ile yazılmıştır, `npm run build` ile derlenir.
-
-## Teknoloji Stack
-
-- **Framework:** NestJS (TypeScript)
-- **ORM:** Prisma (`prisma/schema.prisma`)
-- **Veritabanı:** MySQL 8.0
-- **AI:** Google Gemini (AI Studio — ücretsiz), fallback: Groq.
-- **Auth:** JWT tabanlı
-- **Upload:** Lokal dosya sistemi (`/public/uploads/`, kategorize edilmiş: `news`, `gallery`, `video`, `editor`).
+Haberfoni, birden fazla kaynaktan (AA, IHA, DHA) haber toplayan, bunları kategorize eden ve sosyal medya kanallarında (Telegram, Meta/Facebook) otomatik olarak paylaşan bir haber platformudur.
 
 ## Proje Yapısı
 
-```
-src/
-├── ai/               # AI içerik üretimi (Gemini / Groq)
-├── auth/             # JWT login/register
-├── bot/              # Bot ve Scraper yönetimi
-├── categories/       # Haber kategorileri
-├── news/             # Ana haber CRUD
-├── galleries/        # Fotoğraf galerileri
-├── headlines/        # Manşet/slider yönetimi
-├── settings/         # Uygulama ayarları (Panelden yönetilir)
-└── prisma/           # PrismaService
-```
+### 1. Haberfoni Backend (`haberfoni-backend`)
+- **Teknoloji:** NestJS, Prisma ORM, MySQL.
+- **Görev:** Admin paneli, API hizmetleri ve haber botlarının (Scrapers) çekirdek mantığını yönetir.
+- **Kritik Uç Noktalar:**
+  - `GET /share/:id`: Sosyal medya platformları için OpenGraph (OG) etiketlerini içeren önizleme sayfası.
+  - **Bot Koruması:** Facebook, Twitter ve diğer botların içeriği doğru çekebilmesi için yönlendirme filtresi (`botPattern`) içerir.
 
-## ⚠️ KRİTİK — Veritabanı Güvenliği
+### 2. Haberfoni Bot (`haberfoni-bot`)
+- **Teknoloji:** Node.js, MySQL2.
+- **Görev:** Veritabanındaki `news` tablosunu izler ve yeni haberleri anlık olarak sosyal medyaya servis eder.
+- **Güvenlik:** Veritabanı bağlantısı şifre karmaşasını önlemek için tekil ortam değişkenleri (`MYSQL_USER`, `MYSQL_PASSWORD`) ile yönetilir.
 
-**SUNUCUDAKI VERİTABANI ÜRETİM VERİSİ İÇERİR.**
-- Şifre: **`Haberfoni_Secur3!DB`** (haberfoni_user için)
-- Root Şifre: **`Pr0duct10n_Root!2026`**
-- Asla `docker-compose down -v` yapma (Veriler silinir).
-- Bash üzerinden ünlem işaretli şifre yazarken hata almamak için önce `set +H` komutunu çalıştır.
+### 3. Haberfoni Frontend (`haberfoni-frontend`)
+- **Teknoloji:** React, Vite.
+- **Dağıtım:** Nginx üzerinde `/` root dizininde çalışır. API isteklerini `/servis/` prefix'i ile backend'e iletir.
 
-## 💾 Yedekleme Sistemi
-Script: `scripts/backup_system.sh`
-- Her gece 03:00'te hem DB hem de `/uploads` klasörü yedeklenir.
-- Yedekler `~/haberfoni_backups` içinde saklanır (7 gün rotasyon).
+## Üretim Ortamı Yapılandırması (Production)
 
-## API Endpoint Yapısı
+### Nginx Yönlendirmeleri (api-haberfoni.kaprofis.com)
+- `/servis/` -> `http://haberfoni_backend:3000/` (Backend API)
+- `/uploads/` -> `http://haberfoni_backend:3000/uploads/` (Haber Görselleri)
+- `/` -> Frontend Statik Dosyalar
 
-**ÖNEMLİ:** Backend sunucuda kök dizinden (`/`) çalışmaktadır. Nginx üzerindeki `/servis/` yönlendirmesi backend'e ulaştığında prefix silindiği için backend'in kod tarafında prefix (`api` veya `servis`) kullanmaması zorunludur.
+### Veritabanı Ayarları
+- **Host:** `haberfoni_db` (Docker içi ağ ismi)
+- **Port:** `3306`
+- **User:** `haberfoni_user`
+- **Password:** `Haberfoni_Secur3!DB`
 
-| Modül       | Örnek Yol (API Domain) |
-|-------------|-------------------------|
-| news        | `/servis/news`          |
-| ads         | `/servis/ads`           |
-| categories  | `/servis/categories`    |
-| upload      | `/servis/upload`        |
+## Kritik Teknik İyileştirmeler (Nisan 2026)
 
-## 🛠️ Son Geliştirmeler ve Çözümler (08.04.2026)
+### 1. IHA Scraper Optimizasyonu
+- **Akıllı Karakter Çözme:** `windows-1254` ve `UTF-8` kodlamaları `iconv-lite` ile dinamik olarak tespit edilir.
+- **Görsel Sağlamlık:** Resim bulunamadığında orijinal URL'e fallback yapılır, protokol bağımsız (`//`) linkler desteklenir.
 
-### 1. IHA Scraper Düzeltmeleri
-- **Encoding Sorunu:** IHA'nın farklı sayfalarında kullandığı `windows-1254` ve `UTF-8` karmaşası, `iconv-lite` ile dinamik encoding algılama yapılarak çözüldü. Türkçe karakterler artık hatasız çekiliyor.
-- **Görsel Eksikliği:** IHA'nın yeni şablonları için görsel seçicileri güncellendi.
-- **Fallback Sistemi:** Görsel sunucuya indirilemezse dahi orijinal URL'i geri döndürerek broken-image oluşması engellendi.
+### 2. Sosyal Medya Paylaşım Sistemi
+- **Telegram:** Mesaj başlıkları HTML etiketlerinden arındırılarak (sanitize) `parse_mode: HTML` hataları önlenir.
+- **Meta (Facebook):** `ShareController` üzerinden bot olmayan kullanıcılar gerçek haber linkine yönlendirilirken, Meta botlarına statik OG etiketleri sunulur.
+- **Tekrar Deneme Mantığı:** Bir platformda (örn: Telegram) paylaşılan ama diğerinde (örn: Meta) eksik kalan haberler sistem tarafından fark edilip tekrar denemeye alınır.
 
-### 2. Altyapı ve Rota Uyumluluğu
-- **Prefix Kaldırılması:** Frontend'in 404 hataları almaması için `main.ts`'teki `globalPrefix` kaldırıldı.
-- **CORS:** Üretim ortamındaki domainler (`kaprofis.com`) CORS izin listesine (whitelist) eklendi.
-- **SSL / HTTPS:** Tüm API ve görsel linkleri HTTPS protokolüyle uyumlu (absolute URL) hale getirildi.
+## Bakım ve İzleme
+- **Backend Logları:** `docker logs haberfoni_backend`
+- **Bot Logları:** `docker logs haberfoni_bot`
+- **Veritabanı Yedekleme:** `scripts/backup_system.sh` (Günlük crontab üzerinde çalışır).
 
-## Geliştirme Komutları
-
-```bash
-# Docker Build & Run
-docker-compose up -d --build
-
-# Log İzleme
-docker logs haberfoni_backend -f
-```
+---
+*Son Güncelleme: 08 Nisan 2026*
