@@ -545,7 +545,7 @@ async function scrapeDHAArticle(item: any, targetCategory: string) {
                 if (!text) return '';
 
                 if (tag === 'p') return `<p>${$detail(el).html()?.trim()}</p>`;
-                if (tag === 'h2' || tag === 'h3' || tag === 'h4') return `<h3>${text}</h3>`;
+                if (tag === 'h2' || tag === 'h3' || tag === 'h4') return `<h3>${$detail(el).html()?.trim()}</h3>`;
                 if (tag === 'ul') return `<ul>${$detail(el).html()?.trim()}</ul>`;
                 if (tag === 'ol') return `<ol>${$detail(el).html()?.trim()}</ol>`;
                 return `<p>${text}</p>`;

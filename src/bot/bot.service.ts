@@ -21,8 +21,24 @@ export class BotService implements OnModuleInit {
         private activityLogsService: ActivityLogsService,
         private aiService: AiService
     ) {
-        if (!fs.existsSync(this.UPLOAD_DIR)) {
-            fs.mkdirSync(this.UPLOAD_DIR, { recursive: true });
+        this.ensureUploadDirectories();
+    }
+
+    private ensureUploadDirectories() {
+        const dirs = [
+            this.UPLOAD_DIR,
+            path.join(this.UPLOAD_DIR, 'news'),
+            path.join(this.UPLOAD_DIR, 'gallery'),
+            path.join(this.UPLOAD_DIR, 'gallery_item'),
+            path.join(this.UPLOAD_DIR, 'video'),
+            path.join(this.UPLOAD_DIR, 'editor'),
+        ];
+
+        for (const dir of dirs) {
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+                this.logger.log(`Created directory: ${dir}`);
+            }
         }
     }
 
@@ -362,11 +378,17 @@ export class BotService implements OnModuleInit {
             const urlPath = new URL(url).pathname;
             const ext = path.extname(urlPath) || '.jpg';
             const filename = `${source.toLowerCase()}_${type}_${hash}${ext}`;
-            const filepath = path.join(this.UPLOAD_DIR, filename);
+            const subDir = type.includes('gallery') ? (type === 'gallery_item' ? 'gallery_item' : 'gallery') : 
+                           type === 'news' ? 'news' : 
+                           type === 'video' ? 'video' : '';
+            
+            const targetDir = subDir ? path.join(this.UPLOAD_DIR, subDir) : this.UPLOAD_DIR;
+            const filepath = path.join(targetDir, filename);
+            const publicPath = subDir ? `/uploads/${subDir}/${filename}` : `/uploads/${filename}`;
 
             // Check if already exists
             if (fs.existsSync(filepath)) {
-                return `/uploads/${filename}`;
+                return publicPath;
             }
 
             // Download
@@ -380,8 +402,8 @@ export class BotService implements OnModuleInit {
             });
 
             fs.writeFileSync(filepath, response.data);
-            this.logger.debug(`Downloaded image: ${filename} from ${url}`);
-            return `/uploads/${filename}`;
+            this.logger.debug(`Downloaded image: ${filename} to ${subDir || 'root'} from ${url}`);
+            return publicPath;
         } catch (error) {
             this.logger.warn(`Failed to download image from ${url}: ${error.message}`);
             // If it's the second attempt or already failed, return original URL or null
@@ -403,15 +425,6 @@ export class BotService implements OnModuleInit {
                     where: { original_url: data.original_url }
                 });
                 if (existing) {
-                    // Update title if existing one is 'Video' or empty
-                    if (existing.title.toLowerCase() === 'video' || !existing.title) {
-                        await this.prisma.video.update({
-                            where: { id: existing.id },
-                            data: { title: data.title }
-                        });
-                        this.logger.log(`Updated title for existing video: ${data.title}`);
-                        return true;
-                    }
                     this.logger.verbose(`Skipping existing video: ${data.title}`);
                     return false;
                 }
@@ -551,14 +564,14 @@ export class BotService implements OnModuleInit {
             }
 
             // Check for duplicate by original_url
-            if (data.original_url) {
-                const existing = await this.prisma.photoGallery.findFirst({
-                    where: { original_url: data.original_url }
-                });
-                if (existing) {
-                    this.logger.verbose(`Skipping existing gallery: ${data.title}`);
-                    return false;
-                }
+            const existing = await this.prisma.photoGallery.findFirst({
+                where: { original_url: data.original_url },
+                include: { gallery_images: true }
+            });
+
+            if (existing) {
+                this.logger.verbose(`Skipping existing gallery: ${data.title}`);
+                return false;
             }
 
             // DHA Specific: If a video with same title exists, delete it (Gallery wins)
@@ -719,25 +732,6 @@ export class BotService implements OnModuleInit {
             });
 
             if (existing) {
-                const needsImageUpdate = existing.image_url === null && newsItem.image_url;
-                
-                if (needsImageUpdate) {
-                    this.logger.log(`Updating missing image for existing news item: ${existing.id}`);
-                    const localImageUrl = await this.downloadImage(newsItem.image_url, newsItem.source, 'news_update');
-                    await this.prisma.news.update({
-                        where: { id: existing.id },
-                        data: { image_url: localImageUrl }
-                    });
-                } else if (existing.image_url && existing.image_url.startsWith('/uploads/')) {
-                    // VERIFY IF FILE EXISTS ON DISK
-                    const filename = path.basename(existing.image_url);
-                    const filepath = path.join(this.UPLOAD_DIR, filename);
-                    if (!fs.existsSync(filepath) && newsItem.image_url && newsItem.image_url.startsWith('http')) {
-                        this.logger.log(`File missing on disk for ${existing.id}. Re-downloading...`);
-                        await this.downloadImage(newsItem.image_url, newsItem.source, 'recovery');
-                    }
-                }
-                
                 this.logger.verbose(`Skipping existing news (Content protected): ${newsItem.title.substring(0, 50)}...`);
                 return false;
             }
@@ -745,16 +739,18 @@ export class BotService implements OnModuleInit {
             // 2. Settings already loaded at the top
             const shouldPublish = settings ? settings.auto_publish : false;
 
-            // 3. Category ID
+            // 3. Category ID - Improved matching
+            const categoryIdentifier = newsItem.category?.toString() || 'genel';
             const category = await this.prisma.category.findFirst({
                 where: { 
                     OR: [
-                        { slug: newsItem.category },
-                        { name: newsItem.category }
+                        { slug: categoryIdentifier.toLowerCase() },
+                        { name: categoryIdentifier }
                     ]
                 },
             });
             const categoryId = category ? category.id : null;
+            const finalCategorySlug = category ? category.slug : categoryIdentifier.toLowerCase();
 
             // 3.5 AI Rewrite if enabled
             let socialPosts: any = null;
@@ -780,8 +776,9 @@ export class BotService implements OnModuleInit {
                 } else {
                     this.logger.warn(`AI Rewrite FAILED or SKIPPED for: ${newsItem.title}`);
                 }
-                // Central delay to respect AI RPM limits (Gemini free is 15 RPM ~ 1 per 4s)
-                await new Promise(resolve => setTimeout(resolve, 4500));
+                // AI RPM limitlerine (Gemini free 15 RPM) ve sunucu CPU yüküne saygı duy
+                // 5.5 saniyelik gecikme sunucunun nefes almasını sağlar
+                await new Promise(resolve => setTimeout(resolve, 5500));
             }
 
             // Priority 2: Use Free Translation ONLY if we don't have English yet
@@ -838,14 +835,13 @@ export class BotService implements OnModuleInit {
                     summary_en: newsItem.summary_en,
                     content_en: newsItem.content_en,
                     image_url: await this.downloadImage(newsItem.image_url, newsItem.source, 'news'),
-                    category: newsItem.category,
+                    category: finalCategorySlug,
                     category_id: categoryId,
                     original_url: newsItem.original_url,
                     source: newsItem.source,
                     author: newsItem.author,
                     published_at: shouldPublish ? new Date() : null,
                     is_active: true,
-                    is_slider: false,
                     seo_title: newsItem.title,
                     seo_description: seoDescription,
                     seo_keywords: seoKeywords,

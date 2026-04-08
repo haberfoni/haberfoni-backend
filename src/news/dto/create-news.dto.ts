@@ -13,7 +13,7 @@ export class CreateNewsDto {
     published_at?: string | Date; // Date is handled by Prisma
     is_active?: boolean;
     views?: number;
-    is_slider?: boolean;
+    is_manset_2?: boolean;
     seo_title?: string;
     seo_description?: string;
     seo_keywords?: string;

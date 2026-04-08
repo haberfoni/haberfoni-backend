@@ -24,7 +24,13 @@ export class UploadController {
     @UseInterceptors(
         FileInterceptor('file', {
             storage: diskStorage({
-                destination: UPLOAD_DIR,
+                destination: (req, file, cb) => {
+                    const editorDir = join(UPLOAD_DIR, 'editor');
+                    if (!existsSync(editorDir)) {
+                        mkdirSync(editorDir, { recursive: true });
+                    }
+                    cb(null, editorDir);
+                },
                 filename: (_req, file, cb) => {
                     const unique = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
                     cb(null, `${unique}${extname(file.originalname)}`);
@@ -44,7 +50,7 @@ export class UploadController {
     uploadImage(@UploadedFile() file: Express.Multer.File) {
         if (!file) throw new HttpException('Dosya bulunamadı', HttpStatus.BAD_REQUEST);
         // Return a URL that can be served statically
-        const publicUrl = `/uploads/${file.filename}`;
+        const publicUrl = `/uploads/editor/${file.filename}`;
         return { url: publicUrl };
     }
 }

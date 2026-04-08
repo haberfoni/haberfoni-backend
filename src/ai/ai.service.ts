@@ -13,13 +13,28 @@ export class AiService {
     const dbApiUrl = await this.settingsService.findOne('ai_api_url');
     const dbGroqKey = await this.settingsService.findOne('groq_api_key');
 
-    // ONLY use DB settings as per user request (no .env fallback)
-    let apiKey = dbApiKey?.value;
-    let apiUrl = dbApiUrl?.value || 'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent';
-    const groqKey = dbGroqKey?.value;
+    let apiKey = dbApiKey?.value?.trim();
+    let groqKey = dbGroqKey?.value?.trim();
+    
+    // OTOMATİK TESPİT MANTIĞI: 
+    // Eğer anahtar AIza ile başlıyorsa bu Gemini'dir, gsk_ ile başlıyorsa Groq'dur.
+    let apiUrl = dbApiUrl?.value;
 
-    if (apiUrl.includes('groq') && groqKey) {
+    if (apiKey?.startsWith('AIza')) {
+        // Bu bir Gemini anahtarıdır
+        apiUrl = apiUrl || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+    } else if (apiKey?.startsWith('gsk_')) {
+        // Bu bir Groq anahtarıdır, otomatik olarak Groq URL'sini kullan
+        apiUrl = 'https://api.groq.com/openai/v1/chat/completions';
+    } else if (!apiKey && groqKey) {
+        // Sadece Groq anahtarı girilmişse direkt Groq'u kullan
         apiKey = groqKey;
+        apiUrl = 'https://api.groq.com/openai/v1/chat/completions';
+    }
+
+    // VarsayılanFallback
+    if (!apiUrl) {
+        apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
     }
 
     return { apiKey, apiUrl, groqKey };
@@ -88,15 +103,11 @@ export class AiService {
             }
 
             if (status === 429 || ((status === 403 || status === 404) && isGemini)) {
-                const failedModel = apiUrl.includes('gemini') ? 'Gemini' : (apiUrl.includes('groq') ? 'Groq' : 'AI');
+                const failedModel = lastUsedModel;
                 this.logger.error(`AI Error (${status}) for ${failedModel}`);
                 
                 if (status === 429) {
                     await this.settingsService.update('ai_failed_platform', failedModel);
-                    // Don't set quota_exceeded to true yet if we're falling back from Gemini to Groq
-                    if (failedModel !== 'Gemini' || !groqKey) {
-                        await this.settingsService.update('ai_quota_exceeded', 'true');
-                    }
                 }
 
                 // AUTOMATIC FALLBACK TO GROQ
@@ -125,7 +136,16 @@ export class AiService {
     }
     
     // If all attempts failed, it will fallback to original content
+    const { apiKey: finalKey, groqKey: finalGroqKey } = await this.getAiConfig();
+    const bothFailed = (finalKey?.startsWith('AIza') && finalGroqKey) || (!finalKey && finalGroqKey);
+    
+    await this.settingsService.update('ai_quota_exceeded', 'true');
     await this.settingsService.update('ai_active_platform', 'Orijinal Kaynak (Yapay Zeka Kapalı)');
+    
+    if (bothFailed) {
+        await this.settingsService.update('ai_failed_platform', 'Gemini & Groq');
+    }
+
     return null;
   }
 
@@ -149,6 +169,11 @@ export class AiService {
       **SEO Title (EN):** [İngilizce SEO Başlığı]
       **SEO Description (EN):** [İngilizce SEO Açıklaması]
       **SEO Keywords (EN):** [İngilizce Etiketler]
+
+      KRİTİK KURALLAR:
+      1. Haber metni içindeki mevcut <img>, <figure>, <iframe>, <video> etiketlerini ve bunların sınıflarını (class) ASLA silme, yerlerini değiştirme. Metni bu etiketlerin etrafına yaz.
+      2. Hizalama için kullanılan CSS sınıfları varsa (text-center, text-justify vb.) bunları koru.
+      3. Haber metnini <p> ve <h3> etiketleri kullanarak yapılandır.
 
       ORİJİNAL HABER:
       BAŞLIK: ${title}

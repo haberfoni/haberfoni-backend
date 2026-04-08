@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export class HeadlinesService {
     constructor(private prisma: PrismaService) { }
 
-    async findAll(type?: number, news_id?: string) {
+    async findAll(type?: number, news_id?: number) {
         const where: any = {};
         if (type !== undefined) where.type = type;
         if (news_id !== undefined) where.news_id = news_id;

@@ -21,11 +21,9 @@ export class NewsController {
     @Query('slug') slug?: string,
     @Query('status') status?: 'published' | 'draft',
     @Query('authorId') authorId?: number,
-    @Query('isSlider') isSlider?: string,
     @Query('since') since?: string,
   ) {
-    const parsedIsSlider = isSlider !== undefined ? isSlider === 'true' : undefined;
-    return this.newsService.findAll({ page, limit, category, search, slug, status, authorId, isSlider: parsedIsSlider, since });
+    return this.newsService.findAll({ page, limit, category, search, slug, status, authorId, since });
   }
 
   @Get('slug/:slug')

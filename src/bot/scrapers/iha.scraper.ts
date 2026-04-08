@@ -120,17 +120,21 @@ async function scrapeIHAHTML(url: string, targetCategory: string, bot: BotServic
         $(selector).each((i, elem) => {
             const href = $(elem).attr('href');
             if (href) {
+                // Sadece geçerli haber linklerini al, gereksiz karakterleri ele
                 const isMatch = (href.includes('/video-') || href.includes('/foto-galeri') || href.includes('/fotograf-galeri') || href.includes('/haber-') || href.match(/-[\d]+\/?$/));
-                if (isMatch) {
-                    const fullUrl = href.startsWith('http') ? href : `https://www.iha.com.tr${href}`;
+                if (isMatch && !href.includes('javascript:') && !href.includes('void(')) {
+                    // URL sonundaki ekstra karakterleri temizle (sadece rakamla bitmeli veya slaşla)
+                    let cleanHref = href.split('?')[0].split('#')[0].trim();
+                    const fullUrl = cleanHref.startsWith('http') ? cleanHref : `https://www.iha.com.tr${cleanHref}`;
                     articleLinks.add(fullUrl);
                 }
             }
         });
 
-        console.log(`  Found ${articleLinks.size} candidate links for IHA. Sample:`, Array.from(articleLinks).slice(0, 3));
+        console.log(`  Found ${articleLinks.size} candidate links for IHA.`);
         let count = 0;
-        const linksArray = Array.from(articleLinks).slice(0, 30);
+        // Sunucuyu yormamak için her kategoride en fazla 10 yeni haber işle
+        const linksArray = Array.from(articleLinks).slice(0, 10);
         const BATCH_SIZE = 5;
 
         for (const articleUrl of linksArray) {
@@ -364,9 +368,9 @@ async function scrapeIHAArticle(url: string, targetCategory: string) {
                 const $el = $(el);
 
                 if (tag === 'p' || tag.startsWith('h')) {
-                    const text = $el.text().trim();
-                    if (text.length > 10) {
-                        parts.push(`<${tag}>${text}</${tag}>`);
+                    const htmlContent = $el.html()?.trim();
+                    if (htmlContent && htmlContent.length > 5) {
+                        parts.push(`<${tag}>${htmlContent}</${tag}>`);
                     }
                 } else if (tag === 'img') {
                     let src = $el.attr('data-src') || $el.attr('src') || '';
