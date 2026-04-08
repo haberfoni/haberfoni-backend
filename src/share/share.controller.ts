@@ -28,6 +28,10 @@ export class ShareController {
       if (imageUrl && !imageUrl.startsWith('http')) {
         const baseUrl = 'https://api-haberfoni.kaprofis.com';
         absoluteImageUrl = imageUrl.startsWith('/') ? `${baseUrl}${imageUrl}` : `${baseUrl}/${imageUrl}`;
+      } else if (imageUrl && imageUrl.startsWith('http') && (imageUrl.includes('aa.com.tr') || imageUrl.includes('iha.com.tr') || imageUrl.includes('dha.com.tr'))) {
+        // Even if it's a remote URL, if we have it locally (based on the hash-based filename bot uses), 
+        // we might want to point to our proxy. But for now, let's just ensure absolute path is clean.
+        absoluteImageUrl = imageUrl;
       }
 
       const targetUrl = `https://haberfoni.kaprofis.com/haber/${news.slug}`;
@@ -53,8 +57,9 @@ export class ShareController {
     <meta name="twitter:description" content="${summary}" />
     <meta name="twitter:image" content="${absoluteImageUrl}" />
     <script>
-      // Sadece gerçek kullanıcıları yönlendir
-      if (!navigator.userAgent.includes('facebookexternalhit')) {
+      // Sadece gerçek kullanıcıları yönlendir, botları (Facebook, Twitter, Telegram vb.) engelleme
+      const botPattern = /facebookexternalhit|Facebot|Twitterbot|TelegramBot|WhatsApp|Pinterest|bot|crawler|spider/i;
+      if (!botPattern.test(navigator.userAgent)) {
          setTimeout(function() { window.location.href = "${targetUrl}"; }, 500);
       }
     </script>

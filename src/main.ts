@@ -3,7 +3,7 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.setGlobalPrefix('api');
+  // app.setGlobalPrefix('servis'); // Nginx handles prefixing, so we keep backend root clean
 
   // CORS: Local geliştirme için açık, production'da Nginx de header ekler
   // Belirli origin listesi kullanılır — çift header sorununu önler
