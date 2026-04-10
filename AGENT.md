@@ -46,6 +46,7 @@ Haberfoni, birden fazla kaynaktan (AA, IHA, DHA) haber toplayan, bunları katego
 
 ### 3. Gemini Kota Yönetimi (10 Nisan 2026)
 - **Akıllı Gecikme (Throttling):** Gemini Free Tier kotasına (15 RPM) takılmamak için `AiService` içine her istek arasına **4 saniyelik zorunlu bekleme** (`sleep`) eklendi.
+- **Panelden Yönetim:** AI API anahtarları (Gemini & Groq) güvenlik ve kolaylık amacıyla `.env` dosyasından kaldırıldı. Artık tüm AI yapılandırması **Admin Paneli > SEO & API** sekmesi üzerinden %100 dinamik olarak yönetiliyor.
 - **Otomatik Kurtarma:** Gemini hata verdiğinde Groq'a geçiş yapıldıktan sonra sistemin tekrar Gemini'yi denemesi sağlandı.
 
 ## Bakım ve İzleme
