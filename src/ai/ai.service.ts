@@ -40,7 +40,14 @@ export class AiService {
     return { apiKey, apiUrl, groqKey };
   }
 
+  private sleep(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
   private async callAi(prompt: string): Promise<{ text: string; model: string } | null> {
+    // Gemini Free Tier kotasina (15 RPM) takilmamak icin her istek arasinda 4 saniye bekle
+    await this.sleep(4000);
+    
     const { apiKey: initialKey, apiUrl: initialUrl, groqKey } = await this.getAiConfig();
     let apiKey = initialKey?.trim();
     let apiUrl = initialUrl?.trim();

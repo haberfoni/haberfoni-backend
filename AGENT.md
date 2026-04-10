@@ -31,7 +31,7 @@ Haberfoni, birden fazla kaynaktan (AA, IHA, DHA) haber toplayan, bunları katego
 - **Host:** `haberfoni_db` (Docker içi ağ ismi)
 - **Port:** `3306`
 - **User:** `haberfoni_user`
-- **Password:** `Haberfoni_Secur3!DB`
+- **Password:** `userpassword`
 
 ## Kritik Teknik İyileştirmeler (Nisan 2026)
 
@@ -44,10 +44,14 @@ Haberfoni, birden fazla kaynaktan (AA, IHA, DHA) haber toplayan, bunları katego
 - **Meta (Facebook):** `ShareController` üzerinden bot olmayan kullanıcılar gerçek haber linkine yönlendirilirken, Meta botlarına statik OG etiketleri sunulur.
 - **Tekrar Deneme Mantığı:** Bir platformda (örn: Telegram) paylaşılan ama diğerinde (örn: Meta) eksik kalan haberler sistem tarafından fark edilip tekrar denemeye alınır.
 
+### 3. Gemini Kota Yönetimi (10 Nisan 2026)
+- **Akıllı Gecikme (Throttling):** Gemini Free Tier kotasına (15 RPM) takılmamak için `AiService` içine her istek arasına **4 saniyelik zorunlu bekleme** (`sleep`) eklendi.
+- **Otomatik Kurtarma:** Gemini hata verdiğinde Groq'a geçiş yapıldıktan sonra sistemin tekrar Gemini'yi denemesi sağlandı.
+
 ## Bakım ve İzleme
 - **Backend Logları:** `docker logs haberfoni_backend`
 - **Bot Logları:** `docker logs haberfoni_bot`
 - **Veritabanı Yedekleme:** `scripts/backup_system.sh` (Günlük crontab üzerinde çalışır).
 
 ---
-*Son Güncelleme: 08 Nisan 2026*
+*Son Güncelleme: 10 Nisan 2026*
